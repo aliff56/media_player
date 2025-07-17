@@ -158,16 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   height: 80,
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(8),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(
-                                          0x000000,
-                                        ).withOpacity(1),
-                                        offset: const Offset(0, 11),
-                                        blurRadius: 13,
-                                        spreadRadius: -3,
-                                      ),
-                                    ],
+                                    // No boxShadow here
                                   ),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),

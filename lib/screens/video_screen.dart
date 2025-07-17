@@ -5,6 +5,8 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';
 import 'package:screen_brightness/screen_brightness.dart';
+import 'package:floating/floating.dart';
+import 'dart:math';
 
 class VideoScreen extends StatefulWidget {
   final List<AssetEntity> videoAssets;
@@ -39,6 +41,14 @@ class _VideoScreenState extends State<VideoScreen> {
 
   bool _isMuted = false;
   bool _isLocked = false;
+
+  double? _seekBarValue; // For responsive seek bar
+  bool _isSeeking = false;
+  // For horizontal seek gesture
+  double? _dragStartDx;
+  Duration? _dragStartPosition;
+  double _seekOffsetSeconds = 0;
+  bool _showSeekOverlay = false;
 
   @override
   void initState() {
@@ -251,6 +261,13 @@ class _VideoScreenState extends State<VideoScreen> {
     _startHideTimer();
   }
 
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
+    final twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
+    return '${d.inHours > 0 ? '${twoDigits(d.inHours)}:' : ''}$twoDigitMinutes:$twoDigitSeconds';
+  }
+
   @override
   void dispose() {
     _hideTimer?.cancel();
@@ -280,6 +297,61 @@ class _VideoScreenState extends State<VideoScreen> {
                 ? null
                 : (details) => _onVerticalDragUpdate(details, constraints),
             onVerticalDragEnd: _isLocked ? null : _onVerticalDragEnd,
+            // Horizontal drag for seeking
+            onHorizontalDragStart:
+                _isLocked ||
+                    _controller == null ||
+                    !_controller!.value.isInitialized
+                ? null
+                : (details) {
+                    _dragStartDx = details.localPosition.dx;
+                    _dragStartPosition = _controller!.value.position;
+                    _seekOffsetSeconds = 0;
+                    setState(() {
+                      _showSeekOverlay = true;
+                    });
+                  },
+            onHorizontalDragUpdate:
+                _isLocked ||
+                    _controller == null ||
+                    !_controller!.value.isInitialized
+                ? null
+                : (details) {
+                    if (_dragStartDx != null && _dragStartPosition != null) {
+                      final dx = details.localPosition.dx - _dragStartDx!;
+                      // Sensitivity: 1/3 of screen width = 60 seconds
+                      final screenWidth = constraints.maxWidth;
+                      final seconds = dx / (screenWidth / 3) * 60;
+                      setState(() {
+                        _seekOffsetSeconds = seconds;
+                        _showSeekOverlay = true;
+                      });
+                    }
+                  },
+            onHorizontalDragEnd:
+                _isLocked ||
+                    _controller == null ||
+                    !_controller!.value.isInitialized
+                ? null
+                : (details) {
+                    if (_dragStartPosition != null) {
+                      final newPosition =
+                          _dragStartPosition! +
+                          Duration(seconds: _seekOffsetSeconds.round());
+                      final duration = _controller!.value.duration;
+                      final clamped = newPosition < Duration.zero
+                          ? Duration.zero
+                          : (newPosition > duration ? duration : newPosition);
+                      _controller!.seekTo(clamped);
+                    }
+                    setState(() {
+                      _showSeekOverlay = false;
+                      _seekOffsetSeconds = 0;
+                      _dragStartDx = null;
+                      _dragStartPosition = null;
+                    });
+                    _startHideTimer();
+                  },
             behavior: HitTestBehavior.translucent,
             child: Stack(
               children: [
@@ -291,6 +363,54 @@ class _VideoScreenState extends State<VideoScreen> {
                         )
                       : const CircularProgressIndicator(),
                 ),
+                // Seek overlay
+                if (_showSeekOverlay &&
+                    _controller != null &&
+                    _controller!.value.isInitialized)
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _seekOffsetSeconds > 0
+                                ? Icons.fast_forward
+                                : Icons.fast_rewind,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final duration = _controller!.value.duration;
+                              final start = _dragStartPosition ?? Duration.zero;
+                              final maxSeek = duration - start;
+                              final minSeek = -start.inSeconds.toDouble();
+                              final clampedOffset = _seekOffsetSeconds.clamp(
+                                minSeek,
+                                maxSeek.inSeconds.toDouble(),
+                              );
+                              return Text(
+                                (clampedOffset > 0 ? '+' : '') +
+                                    clampedOffset.round().toString() +
+                                    's',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 // Volume overlay
                 if (_showVolumeOverlay)
                   Center(
@@ -360,6 +480,19 @@ class _VideoScreenState extends State<VideoScreen> {
                   ),
                 // Show all other controls only if not locked
                 if (_showControls && !_isLocked) ...[
+                  // Top semi-transparent bar background
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      height: 75,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.35),
+                        // No borderRadius for rectangular corners
+                      ),
+                    ),
+                  ),
                   Positioned(
                     top: 32,
                     left: 16,
@@ -396,6 +529,34 @@ class _VideoScreenState extends State<VideoScreen> {
                           onPressed: _toggleOrientation,
                           tooltip: 'Toggle Orientation',
                         ),
+                        // PiP button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.picture_in_picture_alt,
+                            color: Colors.white,
+                          ),
+                          onPressed: () async {
+                            final floating = Floating();
+                            final rational = Rational.landscape();
+                            final screenSize =
+                                MediaQuery.of(context).size *
+                                MediaQuery.of(context).devicePixelRatio;
+                            final height =
+                                screenSize.width ~/ rational.aspectRatio;
+                            final arguments = ImmediatePiP(
+                              aspectRatio: rational,
+                              sourceRectHint: Rectangle<int>(
+                                0,
+                                (screenSize.height ~/ 2) - (height ~/ 2),
+                                screenSize.width.toInt(),
+                                height,
+                              ),
+                            );
+                            final status = await floating.enable(arguments);
+                            debugPrint('PiP enabled? $status');
+                          },
+                          tooltip: 'Enable Picture-in-Picture',
+                        ),
                       ],
                     ),
                   ),
@@ -403,101 +564,236 @@ class _VideoScreenState extends State<VideoScreen> {
                     left: 0,
                     right: 0,
                     bottom: 32,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Stack(
+                      alignment: Alignment.bottomCenter,
                       children: [
-                        // Mute/Unmute
-                        IconButton(
-                          iconSize: 32,
-                          color: Colors.white,
-                          icon: Icon(
-                            _isMuted ? Icons.volume_off : Icons.volume_up,
+                        // Semi-transparent bar background
+                        if (_controller != null &&
+                            _controller!.value.isInitialized)
+                          Container(
+                            height: 90,
+                            margin: const EdgeInsets.symmetric(horizontal: 0),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.35),
+                              // No borderRadius for rectangular corners
+                            ),
                           ),
-                          onPressed: () {
-                            _setMute(!_isMuted);
-                            _startHideTimer();
-                          },
-                        ),
-                        // Previous video
-                        IconButton(
-                          iconSize: 36,
-                          color: _currentIndex > 0
-                              ? Colors.white
-                              : Colors.white24,
-                          icon: const Icon(Icons.skip_previous),
-                          onPressed: _currentIndex > 0 ? _playPrevious : null,
-                        ),
-                        // Skip backward 10s
-                        IconButton(
-                          iconSize: 36,
-                          color: Colors.white,
-                          icon: const Icon(Icons.replay_10),
-                          onPressed: () {
-                            if (_controller == null) return;
-                            final pos = _controller!.value.position;
-                            _controller!.seekTo(
-                              Duration(
-                                seconds: (pos.inSeconds - 10).clamp(
-                                  0,
-                                  _controller!.value.duration.inSeconds,
+                        // Controls and seek bar
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // Mute/Unmute
+                                IconButton(
+                                  iconSize: 32,
+                                  color: Colors.white,
+                                  icon: Icon(
+                                    _isMuted
+                                        ? Icons.volume_off
+                                        : Icons.volume_up,
+                                  ),
+                                  onPressed: () {
+                                    _setMute(!_isMuted);
+                                    _startHideTimer();
+                                  },
                                 ),
-                              ),
-                            );
-                            _startHideTimer();
-                          },
-                        ),
-                        // Play/Pause
-                        IconButton(
-                          iconSize: 48,
-                          color: Colors.white,
-                          icon: Icon(
-                            _controller != null && _controller!.value.isPlaying
-                                ? Icons.pause_circle_filled
-                                : Icons.play_circle_filled,
-                          ),
-                          onPressed: () {
-                            if (_controller == null) return;
-                            setState(() {
-                              if (_controller!.value.isPlaying) {
-                                _controller!.pause();
-                              } else {
-                                _controller!.play();
-                              }
-                            });
-                            _startHideTimer();
-                          },
-                        ),
-                        // Skip forward 10s
-                        IconButton(
-                          iconSize: 36,
-                          color: Colors.white,
-                          icon: const Icon(Icons.forward_10),
-                          onPressed: () {
-                            if (_controller == null) return;
-                            final pos = _controller!.value.position;
-                            final duration = _controller!.value.duration;
-                            _controller!.seekTo(
-                              Duration(
-                                seconds: (pos.inSeconds + 10).clamp(
-                                  0,
-                                  duration.inSeconds,
+                                // Previous video
+                                IconButton(
+                                  iconSize: 36,
+                                  color: _currentIndex > 0
+                                      ? Colors.white
+                                      : Colors.white24,
+                                  icon: const Icon(Icons.skip_previous),
+                                  onPressed: _currentIndex > 0
+                                      ? _playPrevious
+                                      : null,
                                 ),
+                                // Skip backward 10s
+                                IconButton(
+                                  iconSize: 36,
+                                  color: Colors.white,
+                                  icon: const Icon(Icons.replay_10),
+                                  onPressed: () {
+                                    if (_controller == null) return;
+                                    final pos = _controller!.value.position;
+                                    _controller!.seekTo(
+                                      Duration(
+                                        seconds: (pos.inSeconds - 10).clamp(
+                                          0,
+                                          _controller!.value.duration.inSeconds,
+                                        ),
+                                      ),
+                                    );
+                                    _startHideTimer();
+                                  },
+                                ),
+                                // Play/Pause
+                                IconButton(
+                                  iconSize: 48,
+                                  color: Colors.white,
+                                  icon: Icon(
+                                    _controller != null &&
+                                            _controller!.value.isPlaying
+                                        ? Icons.pause_circle_filled
+                                        : Icons.play_circle_filled,
+                                  ),
+                                  onPressed: () {
+                                    if (_controller == null) return;
+                                    setState(() {
+                                      if (_controller!.value.isPlaying) {
+                                        _controller!.pause();
+                                      } else {
+                                        _controller!.play();
+                                      }
+                                    });
+                                    _startHideTimer();
+                                  },
+                                ),
+                                // Skip forward 10s
+                                IconButton(
+                                  iconSize: 36,
+                                  color: Colors.white,
+                                  icon: const Icon(Icons.forward_10),
+                                  onPressed: () {
+                                    if (_controller == null) return;
+                                    final pos = _controller!.value.position;
+                                    final duration =
+                                        _controller!.value.duration;
+                                    _controller!.seekTo(
+                                      Duration(
+                                        seconds: (pos.inSeconds + 10).clamp(
+                                          0,
+                                          duration.inSeconds,
+                                        ),
+                                      ),
+                                    );
+                                    _startHideTimer();
+                                  },
+                                ),
+                                // Next video
+                                IconButton(
+                                  iconSize: 36,
+                                  color:
+                                      _currentIndex <
+                                          widget.videoAssets.length - 1
+                                      ? Colors.white
+                                      : Colors.white24,
+                                  icon: const Icon(Icons.skip_next),
+                                  onPressed:
+                                      _currentIndex <
+                                          widget.videoAssets.length - 1
+                                      ? _playNext
+                                      : null,
+                                ),
+                              ],
+                            ),
+                            // Video seek bar with time (styled)
+                            if (_controller != null &&
+                                _controller!.value.isInitialized)
+                              Row(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      left: 12.0,
+                                      right: 8.0,
+                                    ),
+                                    child: Text(
+                                      _formatDuration(
+                                        _isSeeking
+                                            ? Duration(
+                                                milliseconds:
+                                                    (_seekBarValue ?? 0)
+                                                        .toInt(),
+                                              )
+                                            : _controller!.value.position,
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        trackHeight: 6.0,
+                                        thumbShape: const RoundSliderThumbShape(
+                                          enabledThumbRadius: 8.0,
+                                        ),
+                                        overlayShape:
+                                            const RoundSliderOverlayShape(
+                                              overlayRadius: 14.0,
+                                            ),
+                                        trackShape:
+                                            const RoundedRectSliderTrackShape(),
+                                        activeTrackColor: Colors.white,
+                                        inactiveTrackColor: Colors.white38,
+                                        thumbColor: Colors.white,
+                                        overlayColor: Colors.white24,
+                                      ),
+                                      child: Slider(
+                                        value: _isSeeking
+                                            ? (_seekBarValue ?? 0)
+                                            : _controller!
+                                                  .value
+                                                  .position
+                                                  .inMilliseconds
+                                                  .toDouble()
+                                                  .clamp(
+                                                    0,
+                                                    _controller!
+                                                        .value
+                                                        .duration
+                                                        .inMilliseconds
+                                                        .toDouble(),
+                                                  ),
+                                        min: 0,
+                                        max: _controller!
+                                            .value
+                                            .duration
+                                            .inMilliseconds
+                                            .toDouble(),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _isSeeking = true;
+                                            _seekBarValue = value;
+                                          });
+                                        },
+                                        onChangeEnd: (value) {
+                                          _controller!.seekTo(
+                                            Duration(
+                                              milliseconds: value.toInt(),
+                                            ),
+                                          );
+                                          setState(() {
+                                            _isSeeking = false;
+                                            _seekBarValue = null;
+                                          });
+                                          _startHideTimer();
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      right: 12.0,
+                                      left: 8.0,
+                                    ),
+                                    child: Text(
+                                      _formatDuration(
+                                        _controller!.value.duration,
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            );
-                            _startHideTimer();
-                          },
-                        ),
-                        // Next video
-                        IconButton(
-                          iconSize: 36,
-                          color: _currentIndex < widget.videoAssets.length - 1
-                              ? Colors.white
-                              : Colors.white24,
-                          icon: const Icon(Icons.skip_next),
-                          onPressed:
-                              _currentIndex < widget.videoAssets.length - 1
-                              ? _playNext
-                              : null,
+                          ],
                         ),
                       ],
                     ),
