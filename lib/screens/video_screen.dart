@@ -14,6 +14,8 @@ import 'package:media_store_plus/media_store_platform_interface.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/rendering.dart';
+import 'package:just_audio/just_audio.dart';
+import 'audio_screen.dart';
 
 class VideoScreen extends StatefulWidget {
   final List<AssetEntity> videoAssets;
@@ -63,6 +65,37 @@ class _VideoScreenState extends State<VideoScreen> {
 
   // Screenshot key
   final GlobalKey _videoScreenshotKey = GlobalKey();
+  AudioPlayer? _audioPlayer;
+  bool _isAudioOnly = false;
+  bool _isAudioPlayerReady = false;
+
+  // Aspect ratio modes
+  final List<String> _aspectModes = [
+    'Original',
+    'Fit',
+    'Crop',
+    'Stretch',
+    '16:9',
+    '4:3',
+  ];
+  int _aspectModeIndex = 0;
+  String? _aspectModeOverlayText;
+  Timer? _aspectModeOverlayTimer;
+
+  void _cycleAspectMode() {
+    setState(() {
+      _aspectModeIndex = (_aspectModeIndex + 1) % _aspectModes.length;
+      _aspectModeOverlayText = _aspectModes[_aspectModeIndex];
+    });
+    _aspectModeOverlayTimer?.cancel();
+    _aspectModeOverlayTimer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) {
+        setState(() {
+          _aspectModeOverlayText = null;
+        });
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -71,6 +104,7 @@ class _VideoScreenState extends State<VideoScreen> {
     _initializeAndPlay(_currentIndex);
     _initBrightness();
     _startHideTimer();
+    _audioPlayer = AudioPlayer();
   }
 
   Future<void> _initBrightness() async {
@@ -111,25 +145,13 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   Future<void> _setInitialOrientation() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    final aspectRatio = _controller!.value.aspectRatio;
-    if (aspectRatio < 1.0) {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-      setState(() {
-        _isLandscape = false;
-      });
-    } else {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-      setState(() {
-        _isLandscape = true;
-      });
-    }
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    setState(() {
+      _isLandscape = false;
+    });
   }
 
   void _setLandscape() async {
@@ -320,6 +342,32 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
+  Future<void> _switchToAudio() async {
+    if (_controller == null) return;
+    final file = await widget.videoAssets[_currentIndex].file;
+    if (file == null) return;
+    final position = _controller!.value.position;
+    await _controller!.pause();
+    await _audioPlayer!.setFilePath(file.path);
+    await _audioPlayer!.seek(position);
+    setState(() {
+      _isAudioOnly = true;
+      _isAudioPlayerReady = true;
+    });
+    await _audioPlayer!.play();
+  }
+
+  Future<void> _switchToVideo() async {
+    if (_audioPlayer == null) return;
+    final position = _audioPlayer!.position;
+    await _audioPlayer!.pause();
+    await _controller?.seekTo(position);
+    setState(() {
+      _isAudioOnly = false;
+    });
+    await _controller?.play();
+  }
+
   String _formatDuration(Duration d) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
@@ -332,6 +380,7 @@ class _VideoScreenState extends State<VideoScreen> {
     _hideTimer?.cancel();
     _controller?.pause();
     _controller?.dispose();
+    _audioPlayer?.dispose();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -339,6 +388,90 @@ class _VideoScreenState extends State<VideoScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     super.dispose();
+  }
+
+  Widget _buildAspectRatioVideo() {
+    final aspectRatio = _controller!.value.aspectRatio;
+    final mode = _aspectModes[_aspectModeIndex];
+    switch (mode) {
+      case 'Crop':
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: _controller!.value.size.width,
+              height: _controller!.value.size.height,
+              child: VideoPlayer(_controller!),
+            ),
+          ),
+        );
+      case 'Stretch':
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.fill,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: _controller!.value.size.width,
+              height: _controller!.value.size.height,
+              child: VideoPlayer(_controller!),
+            ),
+          ),
+        );
+      case '16:9':
+        return AspectRatio(
+          aspectRatio: 16 / 9,
+          child: FittedBox(
+            fit: BoxFit.fill,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: _controller!.value.size.width,
+              height: _controller!.value.size.height,
+              child: VideoPlayer(_controller!),
+            ),
+          ),
+        );
+      case '4:3':
+        return AspectRatio(
+          aspectRatio: 4 / 3,
+          child: FittedBox(
+            fit: BoxFit.fill,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: _controller!.value.size.width,
+              height: _controller!.value.size.height,
+              child: VideoPlayer(_controller!),
+            ),
+          ),
+        );
+      case 'Fit':
+        return AspectRatio(
+          aspectRatio: aspectRatio,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: _controller!.value.size.width,
+              height: _controller!.value.size.height,
+              child: VideoPlayer(_controller!),
+            ),
+          ),
+        );
+      case 'Original':
+      default:
+        return AspectRatio(
+          aspectRatio: aspectRatio,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              width: _controller!.value.size.width,
+              height: _controller!.value.size.height,
+              child: VideoPlayer(_controller!),
+            ),
+          ),
+        );
+    }
   }
 
   @override
@@ -356,11 +489,11 @@ class _VideoScreenState extends State<VideoScreen> {
                 ? null
                 : (details) => _onVerticalDragUpdate(details, constraints),
             onVerticalDragEnd: _isLocked ? null : _onVerticalDragEnd,
-            // Horizontal drag for seeking
             onHorizontalDragStart:
                 _isLocked ||
                     _controller == null ||
-                    !_controller!.value.isInitialized
+                    !_controller!.value.isInitialized ||
+                    _isAudioOnly
                 ? null
                 : (details) {
                     _dragStartDx = details.localPosition.dx;
@@ -373,12 +506,12 @@ class _VideoScreenState extends State<VideoScreen> {
             onHorizontalDragUpdate:
                 _isLocked ||
                     _controller == null ||
-                    !_controller!.value.isInitialized
+                    !_controller!.value.isInitialized ||
+                    _isAudioOnly
                 ? null
                 : (details) {
                     if (_dragStartDx != null && _dragStartPosition != null) {
                       final dx = details.localPosition.dx - _dragStartDx!;
-                      // Sensitivity: 1/3 of screen width = 60 seconds
                       final screenWidth = constraints.maxWidth;
                       final seconds = dx / (screenWidth / 3) * 60;
                       setState(() {
@@ -390,7 +523,8 @@ class _VideoScreenState extends State<VideoScreen> {
             onHorizontalDragEnd:
                 _isLocked ||
                     _controller == null ||
-                    !_controller!.value.isInitialized
+                    !_controller!.value.isInitialized ||
+                    _isAudioOnly
                 ? null
                 : (details) {
                     if (_dragStartPosition != null) {
@@ -414,508 +548,545 @@ class _VideoScreenState extends State<VideoScreen> {
             behavior: HitTestBehavior.translucent,
             child: Stack(
               children: [
-                Center(
-                  child: _controller != null && _controller!.value.isInitialized
-                      ? RepaintBoundary(
-                          key: _videoScreenshotKey,
-                          child: AspectRatio(
-                            aspectRatio: _controller!.value.aspectRatio,
-                            child: VideoPlayer(_controller!),
-                          ),
-                        )
-                      : const CircularProgressIndicator(),
-                ),
-                // Seek overlay
-                if (_showSeekOverlay &&
-                    _controller != null &&
-                    _controller!.value.isInitialized)
+                if (_isAudioOnly)
+                  AudioScreen(
+                    audioPlayer: _audioPlayer!,
+                    isAudioPlayerReady: _isAudioPlayerReady,
+                    formatDuration: _formatDuration,
+                    onSwitchToVideo: () async {
+                      await _switchToVideo();
+                    },
+                  ),
+                if (!_isAudioOnly)
+                  Center(
+                    child:
+                        _controller != null && _controller!.value.isInitialized
+                        ? RepaintBoundary(
+                            key: _videoScreenshotKey,
+                            child: _buildAspectRatioVideo(),
+                          )
+                        : const CircularProgressIndicator(),
+                  ),
+                // Aspect ratio mode overlay
+                if (_aspectModeOverlayText != null)
                   Center(
                     child: Container(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.black87.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _seekOffsetSeconds > 0
-                                ? Icons.fast_forward
-                                : Icons.fast_rewind,
-                            color: Colors.white,
-                            size: 48,
-                          ),
-                          const SizedBox(height: 8),
-                          Builder(
-                            builder: (context) {
-                              final duration = _controller!.value.duration;
-                              final start = _dragStartPosition ?? Duration.zero;
-                              final maxSeek = duration - start;
-                              final minSeek = -start.inSeconds.toDouble();
-                              final clampedOffset = _seekOffsetSeconds.clamp(
-                                minSeek,
-                                maxSeek.inSeconds.toDouble(),
-                              );
-                              return Text(
-                                (clampedOffset > 0 ? '+' : '') +
-                                    clampedOffset.round().toString() +
-                                    's',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                // Volume overlay
-                if (_showVolumeOverlay)
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.volume_up,
-                            color: Colors.white,
-                            size: 32,
-                          ),
-                          Text(
-                            '${(_currentVolume * 100).round()}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                // Brightness overlay
-                if (_showBrightnessOverlay)
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.brightness_6,
-                            color: Colors.white,
-                            size: 32,
-                          ),
-                          Text(
-                            '${(_currentBrightness * 100).round()}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                // Only show one lock button at a time
-                if (_isLocked)
-                  Positioned(
-                    top: 32,
-                    right: 16,
-                    child: IconButton(
-                      icon: Icon(Icons.lock, color: Colors.white),
-                      onPressed: _toggleLock,
-                      tooltip: 'Unlock Controls',
-                    ),
-                  ),
-                // Show all other controls only if not locked
-                if (_showControls && !_isLocked) ...[
-                  // Top semi-transparent bar background
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      height: 75,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.35),
-                        // No borderRadius for rectangular corners
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 32,
-                    left: 16,
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                  Positioned(
-                    top: 32,
-                    right: 16,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Lock/Unlock button
-                        IconButton(
-                          icon: Icon(
-                            _isLocked ? Icons.lock : Icons.lock_open,
-                            color: Colors.white,
-                          ),
-                          onPressed: _toggleLock,
-                          tooltip: _isLocked
-                              ? 'Unlock Controls'
-                              : 'Lock Controls',
+                      child: Text(
+                        _aspectModeOverlayText!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
                         ),
-                        // Playback speed button
-                        PopupMenuButton<double>(
-                          initialValue: _playbackSpeed,
-                          tooltip: 'Playback Speed',
-                          onSelected: (speed) {
-                            setState(() {
-                              _playbackSpeed = speed;
-                            });
-                            _controller?.setPlaybackSpeed(speed);
-                          },
-                          color: Colors.black87,
-                          itemBuilder: (context) => _speedOptions
-                              .map(
-                                (speed) => PopupMenuItem<double>(
-                                  value: speed,
-                                  child: Text(
-                                    '${speed}x',
-                                    style: TextStyle(
-                                      color: speed == _playbackSpeed
-                                          ? Colors.blue
-                                          : Colors.white,
-                                      fontWeight: speed == _playbackSpeed
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black45,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${_playbackSpeed}x',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Orientation button
-                        IconButton(
-                          icon: Icon(
-                            _isLandscape
-                                ? Icons.screen_lock_portrait
-                                : Icons.screen_lock_landscape,
-                            color: Colors.white,
-                          ),
-                          onPressed: _toggleOrientation,
-                          tooltip: 'Toggle Orientation',
-                        ),
-                        // PiP button
-                        IconButton(
-                          icon: const Icon(
-                            Icons.picture_in_picture_alt,
-                            color: Colors.white,
-                          ),
-                          onPressed: () async {
-                            final floating = Floating();
-                            final rational = Rational.landscape();
-                            final screenSize =
-                                MediaQuery.of(context).size *
-                                MediaQuery.of(context).devicePixelRatio;
-                            final height =
-                                screenSize.width ~/ rational.aspectRatio;
-                            final arguments = ImmediatePiP(
-                              aspectRatio: rational,
-                              sourceRectHint: Rectangle<int>(
-                                0,
-                                (screenSize.height ~/ 2) - (height ~/ 2),
-                                screenSize.width.toInt(),
-                                height,
-                              ),
-                            );
-                            final status = await floating.enable(arguments);
-                            debugPrint('PiP enabled? $status');
-                          },
-                          tooltip: 'Enable Picture-in-Picture',
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 32,
-                    child: Stack(
-                      alignment: Alignment.bottomCenter,
-                      children: [
-                        // Semi-transparent bar background
-                        if (_controller != null &&
-                            _controller!.value.isInitialized)
-                          Container(
-                            height: 90,
-                            margin: const EdgeInsets.symmetric(horizontal: 0),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.35),
-                              // No borderRadius for rectangular corners
-                            ),
-                          ),
-                        // Controls and seek bar
-                        Column(
+                // Overlays and controls (show only if not audio only)
+                if (!_isAudioOnly) ...[
+                  if (_showSeekOverlay &&
+                      _controller != null &&
+                      _controller!.value.isInitialized)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                // Screenshot button
-                                IconButton(
-                                  iconSize: 32,
-                                  color: Colors.white,
-                                  icon: const Icon(Icons.camera_alt),
-                                  tooltip: 'Take Screenshot',
-                                  onPressed: _captureAndSaveScreenshot,
-                                ),
-                                // Mute/Unmute
-                                IconButton(
-                                  iconSize: 32,
-                                  color: Colors.white,
-                                  icon: Icon(
-                                    _isMuted
-                                        ? Icons.volume_off
-                                        : Icons.volume_up,
-                                  ),
-                                  onPressed: () {
-                                    _setMute(!_isMuted);
-                                    _startHideTimer();
-                                  },
-                                ),
-                                // Previous video
-                                IconButton(
-                                  iconSize: 36,
-                                  color: _currentIndex > 0
-                                      ? Colors.white
-                                      : Colors.white24,
-                                  icon: const Icon(Icons.skip_previous),
-                                  onPressed: _currentIndex > 0
-                                      ? _playPrevious
-                                      : null,
-                                ),
-                                // Skip backward 10s
-                                IconButton(
-                                  iconSize: 36,
-                                  color: Colors.white,
-                                  icon: const Icon(Icons.replay_10),
-                                  onPressed: () {
-                                    if (_controller == null) return;
-                                    final pos = _controller!.value.position;
-                                    _controller!.seekTo(
-                                      Duration(
-                                        seconds: (pos.inSeconds - 10).clamp(
-                                          0,
-                                          _controller!.value.duration.inSeconds,
-                                        ),
-                                      ),
-                                    );
-                                    _startHideTimer();
-                                  },
-                                ),
-                                // Play/Pause
-                                IconButton(
-                                  iconSize: 48,
-                                  color: Colors.white,
-                                  icon: Icon(
-                                    _controller != null &&
-                                            _controller!.value.isPlaying
-                                        ? Icons.pause_circle_filled
-                                        : Icons.play_circle_filled,
-                                  ),
-                                  onPressed: () {
-                                    if (_controller == null) return;
-                                    setState(() {
-                                      if (_controller!.value.isPlaying) {
-                                        _controller!.pause();
-                                      } else {
-                                        _controller!.play();
-                                      }
-                                    });
-                                    _startHideTimer();
-                                  },
-                                ),
-                                // Skip forward 10s
-                                IconButton(
-                                  iconSize: 36,
-                                  color: Colors.white,
-                                  icon: const Icon(Icons.forward_10),
-                                  onPressed: () {
-                                    if (_controller == null) return;
-                                    final pos = _controller!.value.position;
-                                    final duration =
-                                        _controller!.value.duration;
-                                    _controller!.seekTo(
-                                      Duration(
-                                        seconds: (pos.inSeconds + 10).clamp(
-                                          0,
-                                          duration.inSeconds,
-                                        ),
-                                      ),
-                                    );
-                                    _startHideTimer();
-                                  },
-                                ),
-                                // Next video
-                                IconButton(
-                                  iconSize: 36,
-                                  color:
-                                      _currentIndex <
-                                          widget.videoAssets.length - 1
-                                      ? Colors.white
-                                      : Colors.white24,
-                                  icon: const Icon(Icons.skip_next),
-                                  onPressed:
-                                      _currentIndex <
-                                          widget.videoAssets.length - 1
-                                      ? _playNext
-                                      : null,
-                                ),
-                              ],
+                            Icon(
+                              _seekOffsetSeconds > 0
+                                  ? Icons.fast_forward
+                                  : Icons.fast_rewind,
+                              color: Colors.white,
+                              size: 48,
                             ),
-                            // Video seek bar with time (styled)
-                            if (_controller != null &&
-                                _controller!.value.isInitialized)
+                            const SizedBox(height: 8),
+                            Builder(
+                              builder: (context) {
+                                final duration = _controller!.value.duration;
+                                final start =
+                                    _dragStartPosition ?? Duration.zero;
+                                final maxSeek = duration - start;
+                                final minSeek = -start.inSeconds.toDouble();
+                                final clampedOffset = _seekOffsetSeconds.clamp(
+                                  minSeek,
+                                  maxSeek.inSeconds.toDouble(),
+                                );
+                                return Text(
+                                  (clampedOffset > 0 ? '+' : '') +
+                                      clampedOffset.round().toString() +
+                                      's',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_showVolumeOverlay)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.volume_up,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                            Text(
+                              '${(_currentVolume * 100).round()}%',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_showBrightnessOverlay)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.brightness_6,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                            Text(
+                              '${(_currentBrightness * 100).round()}%',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_isLocked)
+                    Positioned(
+                      top: 32,
+                      right: 16,
+                      child: IconButton(
+                        icon: Icon(Icons.lock, color: Colors.white),
+                        onPressed: _toggleLock,
+                        tooltip: 'Unlock Controls',
+                      ),
+                    ),
+                  if (_showControls && !_isLocked) ...[
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        height: 75,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.35),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 32,
+                      left: 16,
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                    Positioned(
+                      top: 32,
+                      right: 16,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              _isLocked ? Icons.lock : Icons.lock_open,
+                              color: Colors.white,
+                            ),
+                            onPressed: _toggleLock,
+                            tooltip: _isLocked
+                                ? 'Unlock Controls'
+                                : 'Lock Controls',
+                          ),
+                          PopupMenuButton<double>(
+                            initialValue: _playbackSpeed,
+                            tooltip: 'Playback Speed',
+                            onSelected: (speed) {
+                              setState(() {
+                                _playbackSpeed = speed;
+                              });
+                              _controller?.setPlaybackSpeed(speed);
+                            },
+                            color: Colors.black87,
+                            itemBuilder: (context) => _speedOptions
+                                .map(
+                                  (speed) => PopupMenuItem<double>(
+                                    value: speed,
+                                    child: Text(
+                                      '${speed}x',
+                                      style: TextStyle(
+                                        color: speed == _playbackSpeed
+                                            ? Colors.blue
+                                            : Colors.white,
+                                        fontWeight: speed == _playbackSpeed
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${_playbackSpeed}x',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              _isLandscape
+                                  ? Icons.screen_lock_portrait
+                                  : Icons.screen_lock_landscape,
+                              color: Colors.white,
+                            ),
+                            onPressed: _toggleOrientation,
+                            tooltip: 'Toggle Orientation',
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.picture_in_picture_alt,
+                              color: Colors.white,
+                            ),
+                            onPressed: () async {
+                              final floating = Floating();
+                              final rational = Rational.landscape();
+                              final screenSize =
+                                  MediaQuery.of(context).size *
+                                  MediaQuery.of(context).devicePixelRatio;
+                              final height =
+                                  screenSize.width ~/ rational.aspectRatio;
+                              final arguments = ImmediatePiP(
+                                aspectRatio: rational,
+                                sourceRectHint: Rectangle<int>(
+                                  0,
+                                  (screenSize.height ~/ 2) - (height ~/ 2),
+                                  screenSize.width.toInt(),
+                                  height,
+                                ),
+                              );
+                              final status = await floating.enable(arguments);
+                              debugPrint('PiP enabled? $status');
+                            },
+                            tooltip: 'Enable Picture-in-Picture',
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              _isAudioOnly ? Icons.videocam : Icons.audiotrack,
+                              color: Colors.white,
+                            ),
+                            tooltip: _isAudioOnly
+                                ? 'Switch to Video'
+                                : 'Audio Only',
+                            onPressed: () async {
+                              if (_isAudioOnly) {
+                                await _switchToVideo();
+                              } else {
+                                await _switchToAudio();
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.aspect_ratio, color: Colors.white),
+                            onPressed: _cycleAspectMode,
+                            tooltip: 'Change Aspect Ratio',
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 32,
+                      child: Stack(
+                        alignment: Alignment.bottomCenter,
+                        children: [
+                          if (_controller != null &&
+                              _controller!.value.isInitialized)
+                            Container(
+                              height: 90,
+                              margin: const EdgeInsets.symmetric(horizontal: 0),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.35),
+                              ),
+                            ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                      left: 12.0,
-                                      right: 8.0,
-                                    ),
-                                    child: Text(
-                                      _formatDuration(
-                                        _isSeeking
-                                            ? Duration(
-                                                milliseconds:
-                                                    (_seekBarValue ?? 0)
-                                                        .toInt(),
-                                              )
-                                            : _controller!.value.position,
-                                      ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
-                                    ),
+                                  IconButton(
+                                    iconSize: 32,
+                                    color: Colors.white,
+                                    icon: const Icon(Icons.camera_alt),
+                                    tooltip: 'Take Screenshot',
+                                    onPressed: _captureAndSaveScreenshot,
                                   ),
-                                  Expanded(
-                                    child: SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        trackHeight: 6.0,
-                                        thumbShape: const RoundSliderThumbShape(
-                                          enabledThumbRadius: 8.0,
+                                  IconButton(
+                                    iconSize: 32,
+                                    color: Colors.white,
+                                    icon: Icon(
+                                      _isMuted
+                                          ? Icons.volume_off
+                                          : Icons.volume_up,
+                                    ),
+                                    onPressed: () {
+                                      _setMute(!_isMuted);
+                                      _startHideTimer();
+                                    },
+                                  ),
+                                  IconButton(
+                                    iconSize: 36,
+                                    color: _currentIndex > 0
+                                        ? Colors.white
+                                        : Colors.white24,
+                                    icon: const Icon(Icons.skip_previous),
+                                    onPressed: _currentIndex > 0
+                                        ? _playPrevious
+                                        : null,
+                                  ),
+                                  IconButton(
+                                    iconSize: 36,
+                                    color: Colors.white,
+                                    icon: const Icon(Icons.replay_10),
+                                    onPressed: () {
+                                      if (_controller == null) return;
+                                      final pos = _controller!.value.position;
+                                      _controller!.seekTo(
+                                        Duration(
+                                          seconds: (pos.inSeconds - 10).clamp(
+                                            0,
+                                            _controller!
+                                                .value
+                                                .duration
+                                                .inSeconds,
+                                          ),
                                         ),
-                                        overlayShape:
-                                            const RoundSliderOverlayShape(
-                                              overlayRadius: 14.0,
-                                            ),
-                                        trackShape:
-                                            const RoundedRectSliderTrackShape(),
-                                        activeTrackColor: Colors.white,
-                                        inactiveTrackColor: Colors.white38,
-                                        thumbColor: Colors.white,
-                                        overlayColor: Colors.white24,
-                                      ),
-                                      child: Slider(
-                                        value: _isSeeking
-                                            ? (_seekBarValue ?? 0)
-                                            : _controller!
-                                                  .value
-                                                  .position
-                                                  .inMilliseconds
-                                                  .toDouble()
-                                                  .clamp(
-                                                    0,
-                                                    _controller!
-                                                        .value
-                                                        .duration
-                                                        .inMilliseconds
-                                                        .toDouble(),
-                                                  ),
-                                        min: 0,
-                                        max: _controller!
-                                            .value
-                                            .duration
-                                            .inMilliseconds
-                                            .toDouble(),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _isSeeking = true;
-                                            _seekBarValue = value;
-                                          });
-                                        },
-                                        onChangeEnd: (value) {
-                                          _controller!.seekTo(
-                                            Duration(
-                                              milliseconds: value.toInt(),
-                                            ),
-                                          );
-                                          setState(() {
-                                            _isSeeking = false;
-                                            _seekBarValue = null;
-                                          });
-                                          _startHideTimer();
-                                        },
-                                      ),
-                                    ),
+                                      );
+                                      _startHideTimer();
+                                    },
                                   ),
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                      right: 12.0,
-                                      left: 8.0,
+                                  IconButton(
+                                    iconSize: 48,
+                                    color: Colors.white,
+                                    icon: Icon(
+                                      _controller != null &&
+                                              _controller!.value.isPlaying
+                                          ? Icons.pause_circle_filled
+                                          : Icons.play_circle_filled,
                                     ),
-                                    child: Text(
-                                      _formatDuration(
-                                        _controller!.value.duration,
-                                      ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
-                                    ),
+                                    onPressed: () {
+                                      if (_controller == null) return;
+                                      setState(() {
+                                        if (_controller!.value.isPlaying) {
+                                          _controller!.pause();
+                                        } else {
+                                          _controller!.play();
+                                        }
+                                      });
+                                      _startHideTimer();
+                                    },
+                                  ),
+                                  IconButton(
+                                    iconSize: 36,
+                                    color: Colors.white,
+                                    icon: const Icon(Icons.forward_10),
+                                    onPressed: () {
+                                      if (_controller == null) return;
+                                      final pos = _controller!.value.position;
+                                      final duration =
+                                          _controller!.value.duration;
+                                      _controller!.seekTo(
+                                        Duration(
+                                          seconds: (pos.inSeconds + 10).clamp(
+                                            0,
+                                            duration.inSeconds,
+                                          ),
+                                        ),
+                                      );
+                                      _startHideTimer();
+                                    },
+                                  ),
+                                  IconButton(
+                                    iconSize: 36,
+                                    color:
+                                        _currentIndex <
+                                            widget.videoAssets.length - 1
+                                        ? Colors.white
+                                        : Colors.white24,
+                                    icon: const Icon(Icons.skip_next),
+                                    onPressed:
+                                        _currentIndex <
+                                            widget.videoAssets.length - 1
+                                        ? _playNext
+                                        : null,
                                   ),
                                 ],
                               ),
-                          ],
-                        ),
-                      ],
+                              if (_controller != null &&
+                                  _controller!.value.isInitialized)
+                                Row(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: 12.0,
+                                        right: 8.0,
+                                      ),
+                                      child: Text(
+                                        _formatDuration(
+                                          _isSeeking
+                                              ? Duration(
+                                                  milliseconds:
+                                                      (_seekBarValue ?? 0)
+                                                          .toInt(),
+                                                )
+                                              : _controller!.value.position,
+                                        ),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: SliderTheme(
+                                        data: SliderTheme.of(context).copyWith(
+                                          trackHeight: 6.0,
+                                          thumbShape:
+                                              const RoundSliderThumbShape(
+                                                enabledThumbRadius: 8.0,
+                                              ),
+                                          overlayShape:
+                                              const RoundSliderOverlayShape(
+                                                overlayRadius: 14.0,
+                                              ),
+                                          trackShape:
+                                              const RoundedRectSliderTrackShape(),
+                                          activeTrackColor: Colors.white,
+                                          inactiveTrackColor: Colors.white38,
+                                          thumbColor: Colors.white,
+                                          overlayColor: Colors.white24,
+                                        ),
+                                        child: Slider(
+                                          value: _isSeeking
+                                              ? (_seekBarValue ?? 0)
+                                              : _controller!
+                                                    .value
+                                                    .position
+                                                    .inMilliseconds
+                                                    .toDouble()
+                                                    .clamp(
+                                                      0,
+                                                      _controller!
+                                                          .value
+                                                          .duration
+                                                          .inMilliseconds
+                                                          .toDouble(),
+                                                    ),
+                                          min: 0,
+                                          max: _controller!
+                                              .value
+                                              .duration
+                                              .inMilliseconds
+                                              .toDouble(),
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _isSeeking = true;
+                                              _seekBarValue = value;
+                                            });
+                                          },
+                                          onChangeEnd: (value) {
+                                            _controller!.seekTo(
+                                              Duration(
+                                                milliseconds: value.toInt(),
+                                              ),
+                                            );
+                                            setState(() {
+                                              _isSeeking = false;
+                                              _seekBarValue = null;
+                                            });
+                                            _startHideTimer();
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        right: 12.0,
+                                        left: 8.0,
+                                      ),
+                                      child: Text(
+                                        _formatDuration(
+                                          _controller!.value.duration,
+                                        ),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ],
             ),
