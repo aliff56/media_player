@@ -7,6 +7,13 @@ import 'package:flutter/services.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:floating/floating.dart';
 import 'dart:math';
+import 'package:path_provider/path_provider.dart';
+import 'package:media_store_plus/media_store_plus.dart';
+import 'package:media_store_plus/src/dir_type.dart';
+import 'package:media_store_plus/media_store_platform_interface.dart';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'package:flutter/rendering.dart';
 
 class VideoScreen extends StatefulWidget {
   final List<AssetEntity> videoAssets;
@@ -42,6 +49,10 @@ class _VideoScreenState extends State<VideoScreen> {
   bool _isMuted = false;
   bool _isLocked = false;
 
+  // Playback speed state
+  double _playbackSpeed = 1.0;
+  final List<double> _speedOptions = [0.25, 0.5, 1.0, 1.5, 2.0];
+
   double? _seekBarValue; // For responsive seek bar
   bool _isSeeking = false;
   // For horizontal seek gesture
@@ -49,6 +60,9 @@ class _VideoScreenState extends State<VideoScreen> {
   Duration? _dragStartPosition;
   double _seekOffsetSeconds = 0;
   bool _showSeekOverlay = false;
+
+  // Screenshot key
+  final GlobalKey _videoScreenshotKey = GlobalKey();
 
   @override
   void initState() {
@@ -89,6 +103,8 @@ class _VideoScreenState extends State<VideoScreen> {
         _currentVolume = 0.5;
       });
       controller.setVolume(_currentVolume);
+      // Set playback speed after initialization
+      controller.setPlaybackSpeed(_playbackSpeed);
       _setInitialOrientation();
       controller.play();
     }
@@ -261,6 +277,49 @@ class _VideoScreenState extends State<VideoScreen> {
     _startHideTimer();
   }
 
+  Future<void> _captureAndSaveScreenshot() async {
+    try {
+      RenderRepaintBoundary boundary =
+          _videoScreenshotKey.currentContext!.findRenderObject()
+              as RenderRepaintBoundary;
+      ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+      ByteData? byteData = await image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      if (byteData == null) throw Exception('Failed to get image bytes');
+      Uint8List pngBytes = byteData.buffer.asUint8List();
+      final directory = await getTemporaryDirectory();
+      final fileName =
+          'video_screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsBytes(pngBytes);
+      await MediaStore.ensureInitialized();
+      final saveInfo = await MediaStorePlatform.instance.saveFile(
+        tempFilePath: file.path,
+        fileName: fileName,
+        dirType: DirType.photo,
+        dirName: DirName.pictures,
+        relativePath: '',
+      );
+      if (saveInfo != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Screenshot saved to gallery!')),
+          );
+        }
+      } else {
+        throw Exception('MediaStore.saveFile failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save screenshot: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
   String _formatDuration(Duration d) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
@@ -357,9 +416,12 @@ class _VideoScreenState extends State<VideoScreen> {
               children: [
                 Center(
                   child: _controller != null && _controller!.value.isInitialized
-                      ? AspectRatio(
-                          aspectRatio: _controller!.value.aspectRatio,
-                          child: VideoPlayer(_controller!),
+                      ? RepaintBoundary(
+                          key: _videoScreenshotKey,
+                          child: AspectRatio(
+                            aspectRatio: _controller!.value.aspectRatio,
+                            child: VideoPlayer(_controller!),
+                          ),
                         )
                       : const CircularProgressIndicator(),
                 ),
@@ -518,6 +580,54 @@ class _VideoScreenState extends State<VideoScreen> {
                               ? 'Unlock Controls'
                               : 'Lock Controls',
                         ),
+                        // Playback speed button
+                        PopupMenuButton<double>(
+                          initialValue: _playbackSpeed,
+                          tooltip: 'Playback Speed',
+                          onSelected: (speed) {
+                            setState(() {
+                              _playbackSpeed = speed;
+                            });
+                            _controller?.setPlaybackSpeed(speed);
+                          },
+                          color: Colors.black87,
+                          itemBuilder: (context) => _speedOptions
+                              .map(
+                                (speed) => PopupMenuItem<double>(
+                                  value: speed,
+                                  child: Text(
+                                    '${speed}x',
+                                    style: TextStyle(
+                                      color: speed == _playbackSpeed
+                                          ? Colors.blue
+                                          : Colors.white,
+                                      fontWeight: speed == _playbackSpeed
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${_playbackSpeed}x',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
                         // Orientation button
                         IconButton(
                           icon: Icon(
@@ -585,6 +695,14 @@ class _VideoScreenState extends State<VideoScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
+                                // Screenshot button
+                                IconButton(
+                                  iconSize: 32,
+                                  color: Colors.white,
+                                  icon: const Icon(Icons.camera_alt),
+                                  tooltip: 'Take Screenshot',
+                                  onPressed: _captureAndSaveScreenshot,
+                                ),
                                 // Mute/Unmute
                                 IconButton(
                                   iconSize: 32,
