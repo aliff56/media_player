@@ -10,6 +10,8 @@ class AudioScreen extends StatefulWidget {
   final String playbackState; // 'playing', 'paused', etc.
   final int playbackPositionMs;
   final int? totalDurationMs;
+  final VoidCallback onNext;
+  final VoidCallback onPrevious;
 
   const AudioScreen({
     Key? key,
@@ -19,6 +21,8 @@ class AudioScreen extends StatefulWidget {
     required this.playbackState,
     required this.playbackPositionMs,
     this.totalDurationMs,
+    required this.onNext,
+    required this.onPrevious,
   }) : super(key: key);
 
   @override
@@ -99,23 +103,38 @@ class _AudioScreenState extends State<AudioScreen>
                   ),
                 ),
                 const SizedBox(height: 16),
-                IconButton(
-                  iconSize: 64,
-                  color: Colors.white,
-                  icon: Icon(
-                    widget.playbackState == 'playing'
-                        ? Icons.pause
-                        : Icons.play_arrow,
-                  ),
-                  onPressed: () async {
-                    if (widget.playbackState == 'playing') {
-                      (context as Element).markNeedsBuild();
-                      await NativeAudioService.pauseAudio();
-                    } else {
-                      (context as Element).markNeedsBuild();
-                      await NativeAudioService.playAudio();
-                    }
-                  },
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.skip_previous, color: Colors.white),
+                      iconSize: 48,
+                      onPressed: widget.onPrevious,
+                    ),
+                    IconButton(
+                      iconSize: 64,
+                      color: Colors.white,
+                      icon: Icon(
+                        widget.playbackState == 'playing'
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                      ),
+                      onPressed: () async {
+                        if (widget.playbackState == 'playing') {
+                          (context as Element).markNeedsBuild();
+                          await NativeAudioService.pauseAudio();
+                        } else {
+                          (context as Element).markNeedsBuild();
+                          await NativeAudioService.playAudio();
+                        }
+                      },
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.skip_next, color: Colors.white),
+                      iconSize: 48,
+                      onPressed: widget.onNext,
+                    ),
+                  ],
                 ),
                 Slider(
                   value: _sliderValue.clamp(0, maxValue),

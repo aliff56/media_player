@@ -50,6 +50,13 @@ class MainActivity : FlutterActivity() {
                     startService(intent)
                     result.success(null)
                 }
+                "previousAudio" -> {
+                    val intent = Intent(this, AudioPlayerService::class.java).apply {
+                        action = AudioPlayerService.ACTION_PREVIOUS
+                    }
+                    startService(intent)
+                    result.success(null)
+                }
                 "seekTo" -> {
                     val position = call.argument<Int>("position") ?: 0
                     val intent = Intent(this, AudioPlayerService::class.java).apply {

@@ -15,6 +15,7 @@ class AudioPlayerService : Service() {
         const val ACTION_PAUSE = "ACTION_PAUSE"
         const val ACTION_PLAY = "ACTION_PLAY"
         const val ACTION_NEXT = "ACTION_NEXT"
+        const val ACTION_PREVIOUS = "ACTION_PREVIOUS"
         const val ACTION_SEEK = "ACTION_SEEK"
     }
 
@@ -37,6 +38,7 @@ class AudioPlayerService : Service() {
             ACTION_PAUSE -> pauseAudio()
             ACTION_PLAY -> playAudio()
             ACTION_NEXT -> nextAudio()
+            ACTION_PREVIOUS -> previousAudio()
             ACTION_SEEK -> {
                 val position = intent.getIntExtra("position", 0)
                 seekTo(position)
@@ -84,6 +86,11 @@ class AudioPlayerService : Service() {
     private fun nextAudio() {
         // Implement logic to play next audio file if you have a playlist
         sendPlaybackState("next")
+    }
+
+    private fun previousAudio() {
+        // Implement logic to play previous audio file if you have a playlist
+        sendPlaybackState("previous")
     }
 
     private fun seekTo(position: Int) {

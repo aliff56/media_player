@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:photo_manager/photo_manager.dart';
-import 'package:video_player/video_player.dart';
 import '../services/video_service.dart';
 import '../services/permission_service.dart';
-import 'video_screen.dart';
+import 'video_player_screen/video_player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -16,14 +17,23 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<AssetEntity> _videoAssets = [];
-  VideoPlayerController? _controller;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  late final Player player;
+  late final VideoController videoController;
   String? _currentVideoName;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    player = Player();
+    videoController = VideoController(player);
     _fetchAllVideos();
+    // The listener just triggers a rebuild.
+    _searchController.addListener(() {
+      setState(() {});
+    });
   }
 
   Future<void> _fetchAllVideos() async {
@@ -54,65 +64,108 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _startSearch() {
+    setState(() {
+      _isSearching = true;
+    });
+  }
+
+  void _stopSearch() {
+    setState(() {
+      _isSearching = false;
+      _searchController.clear();
+    });
+  }
+
   void _playVideo(AssetEntity asset) async {
     final file = await asset.file;
     if (file != null) {
-      _controller?.dispose();
-      _controller = VideoPlayerController.file(file)
-        ..initialize().then((_) {
-          setState(() {
-            _currentVideoName =
-                asset.title ?? file.path.split(Platform.pathSeparator).last;
-          });
-          _controller!.play();
-        });
+      await player.open(Media(file.path), play: true);
+      setState(() {
+        _currentVideoName =
+            asset.title ?? file.path.split(Platform.pathSeparator).last;
+      });
     }
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    player.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Filter the list directly inside the build method.
+    final videosToShow = _isSearching
+        ? _videoAssets.where((asset) {
+            final title = asset.title?.toLowerCase() ?? '';
+            final query = _searchController.text.toLowerCase();
+            return title.contains(query);
+          }).toList()
+        : _videoAssets;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Video Browser'),
-        leading: (_controller != null || _currentVideoName != null)
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search videos...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: Colors.white54),
+                ),
+                style: TextStyle(color: Colors.white),
+              )
+            : const Text('Video Browser'),
+        leading:
+            (player.state.playlist.medias.isNotEmpty ||
+                _currentVideoName != null)
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () {
+                  player.stop();
                   setState(() {
-                    _controller?.pause();
-                    _controller = null;
                     _currentVideoName = null;
                   });
                 },
               )
             : null,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetchAllVideos,
-            tooltip: 'Reload Videos',
-          ),
-        ],
+        actions: _isSearching
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: _stopSearch,
+                ),
+              ]
+            : [
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: _startSearch,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _fetchAllVideos,
+                  tooltip: 'Reload Videos',
+                ),
+              ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _videoAssets.isEmpty
-          ? const Center(child: Text('No videos found on device.'))
+          : videosToShow.isEmpty
+          ? Center(
+              child: Text(
+                _isSearching
+                    ? 'No results found.'
+                    : 'No videos found on device.',
+              ),
+            )
           : Column(
               children: [
-                if (_controller != null && _controller!.value.isInitialized)
-                  Flexible(
-                    child: AspectRatio(
-                      aspectRatio: _controller!.value.aspectRatio,
-                      child: VideoPlayer(_controller!),
-                    ),
-                  ),
+                if (player.state.playlist.medias.isNotEmpty)
+                  Flexible(child: Video(controller: videoController)),
                 if (_currentVideoName != null)
                   Padding(
                     padding: const EdgeInsets.all(8.0),
@@ -124,9 +177,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 const Divider(),
                 Expanded(
                   child: ListView.builder(
-                    itemCount: _videoAssets.length,
+                    itemCount: videosToShow.length,
                     itemBuilder: (context, index) {
-                      final asset = _videoAssets[index];
+                      final asset = videosToShow[index];
                       return FutureBuilder<File?>(
                         future: asset.file,
                         builder: (context, snapshot) {
@@ -185,16 +238,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                   horizontal: 12,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: Colors
+                                      .grey[850], // Changed from Colors.white
                                   borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(
-                                        0x000000,
-                                      ).withOpacity(1),
-                                      offset: const Offset(0, 11),
-                                      blurRadius: 13,
-                                      spreadRadius: -3,
+                                      color: Colors.black.withOpacity(
+                                        0.4,
+                                      ), // Softened shadow
+                                      offset: const Offset(0, 4),
+                                      blurRadius: 8,
                                     ),
                                   ],
                                 ),
@@ -205,16 +258,28 @@ class _HomeScreenState extends State<HomeScreen> {
                                         file.path
                                             .split(Platform.pathSeparator)
                                             .last,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                    ), // Changed text color
                                   ),
-                                  onTap: () async {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => VideoScreen(
-                                          videoAssets: _videoAssets,
-                                          initialIndex: index,
-                                        ),
-                                      ),
+                                  onTap: () {
+                                    // Always pass the full list of assets
+                                    final fullList = _videoAssets;
+                                    // Find the actual index in the full list
+                                    final initialIndex = fullList.indexWhere(
+                                      (a) => a.id == asset.id,
                                     );
+
+                                    if (initialIndex != -1) {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => VideoPlayerScreen(
+                                            videoAssets: fullList,
+                                            initialIndex: initialIndex,
+                                          ),
+                                        ),
+                                      );
+                                    }
                                   },
                                 ),
                               );

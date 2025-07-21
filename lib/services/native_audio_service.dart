@@ -27,6 +27,10 @@ class NativeAudioService {
     await _channel.invokeMethod('nextAudio');
   }
 
+  static Future<void> previousAudio() async {
+    await _channel.invokeMethod('previousAudio');
+  }
+
   static Future<void> seekTo(int positionMs) async {
     await _channel.invokeMethod('seekTo', {'position': positionMs});
   }
