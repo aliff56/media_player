@@ -1,31 +1,94 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
+import 'dart:async';
+import 'package:flutter/scheduler.dart';
+import '../services/native_audio_service.dart';
 
-class AudioScreen extends StatelessWidget {
-  final AudioPlayer audioPlayer;
+class AudioScreen extends StatefulWidget {
   final bool isAudioPlayerReady;
   final String Function(Duration) formatDuration;
   final VoidCallback onSwitchToVideo;
+  final String playbackState; // 'playing', 'paused', etc.
+  final int playbackPositionMs;
+  final int? totalDurationMs;
 
   const AudioScreen({
     Key? key,
-    required this.audioPlayer,
     required this.isAudioPlayerReady,
     required this.formatDuration,
     required this.onSwitchToVideo,
+    required this.playbackState,
+    required this.playbackPositionMs,
+    this.totalDurationMs,
   }) : super(key: key);
 
   @override
+  State<AudioScreen> createState() => _AudioScreenState();
+}
+
+class _AudioScreenState extends State<AudioScreen>
+    with SingleTickerProviderStateMixin {
+  late double _sliderValue;
+  late int _lastNativePosition;
+  late int _lastNativeUpdateTime;
+  Ticker? _ticker;
+  bool _isUserSeeking = false;
+  int? _seekTarget;
+
+  @override
+  void initState() {
+    super.initState();
+    _sliderValue = widget.playbackPositionMs.toDouble();
+    _lastNativePosition = widget.playbackPositionMs;
+    _lastNativeUpdateTime = DateTime.now().millisecondsSinceEpoch;
+    _ticker = createTicker(_onTick)..start();
+  }
+
+  @override
+  void didUpdateWidget(AudioScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isUserSeeking && widget.playbackPositionMs != _lastNativePosition) {
+      _sliderValue = widget.playbackPositionMs.toDouble();
+      _lastNativePosition = widget.playbackPositionMs;
+      _lastNativeUpdateTime = DateTime.now().millisecondsSinceEpoch;
+    }
+  }
+
+  void _onTick(Duration elapsed) {
+    if (!_isUserSeeking && widget.playbackState == 'playing') {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final elapsedMs = now - _lastNativeUpdateTime;
+      final estPosition = _lastNativePosition + elapsedMs;
+      final maxValue =
+          (widget.totalDurationMs != null && widget.totalDurationMs! > 0)
+          ? widget.totalDurationMs!.toDouble()
+          : (_sliderValue + 1000);
+      setState(() {
+        _sliderValue = estPosition.clamp(0, maxValue).toDouble();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final maxValue =
+        (widget.totalDurationMs != null && widget.totalDurationMs! > 0)
+        ? widget.totalDurationMs!.toDouble()
+        : (_sliderValue + 1000);
     return Center(
-      child: isAudioPlayerReady
+      child: widget.isAudioPlayerReady
           ? Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.audiotrack, color: Colors.white, size: 80),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
-                  onPressed: onSwitchToVideo,
+                  onPressed: widget.onSwitchToVideo,
                   icon: Icon(Icons.videocam, color: Colors.white),
                   label: Text(
                     'Switch to Video',
@@ -36,53 +99,46 @@ class AudioScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                StreamBuilder<PlayerState>(
-                  stream: audioPlayer.playerStateStream,
-                  builder: (context, snapshot) {
-                    final playing = snapshot.data?.playing ?? false;
-                    return IconButton(
-                      iconSize: 64,
-                      color: Colors.white,
-                      icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                      onPressed: () {
-                        if (playing) {
-                          audioPlayer.pause();
-                        } else {
-                          audioPlayer.play();
-                        }
-                      },
-                    );
+                IconButton(
+                  iconSize: 64,
+                  color: Colors.white,
+                  icon: Icon(
+                    widget.playbackState == 'playing'
+                        ? Icons.pause
+                        : Icons.play_arrow,
+                  ),
+                  onPressed: () async {
+                    if (widget.playbackState == 'playing') {
+                      (context as Element).markNeedsBuild();
+                      await NativeAudioService.pauseAudio();
+                    } else {
+                      (context as Element).markNeedsBuild();
+                      await NativeAudioService.playAudio();
+                    }
                   },
                 ),
-                StreamBuilder<Duration>(
-                  stream: audioPlayer.positionStream,
-                  builder: (context, snapshot) {
-                    final pos = snapshot.data ?? Duration.zero;
-                    final total = audioPlayer.duration ?? Duration.zero;
-                    return Column(
-                      children: [
-                        Slider(
-                          value: pos.inMilliseconds.toDouble().clamp(
-                            0,
-                            total.inMilliseconds.toDouble(),
-                          ),
-                          min: 0,
-                          max: total.inMilliseconds.toDouble() > 0
-                              ? total.inMilliseconds.toDouble()
-                              : 1,
-                          onChanged: (value) {
-                            audioPlayer.seek(
-                              Duration(milliseconds: value.toInt()),
-                            );
-                          },
-                        ),
-                        Text(
-                          '${formatDuration(pos)} / ${formatDuration(total)}',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    );
+                Slider(
+                  value: _sliderValue.clamp(0, maxValue),
+                  min: 0,
+                  max: maxValue,
+                  onChanged: (value) {
+                    setState(() {
+                      _isUserSeeking = true;
+                      _sliderValue = value;
+                      _seekTarget = value.toInt();
+                    });
                   },
+                  onChangeEnd: (value) async {
+                    setState(() {
+                      _isUserSeeking = false;
+                    });
+                    await NativeAudioService.seekTo(value.toInt());
+                  },
+                ),
+                Text(
+                  '${widget.formatDuration(Duration(milliseconds: _sliderValue.toInt()))} / '
+                  '${widget.formatDuration(Duration(milliseconds: widget.totalDurationMs ?? 0))}',
+                  style: TextStyle(color: Colors.white),
                 ),
               ],
             )

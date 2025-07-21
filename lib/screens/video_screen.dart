@@ -15,6 +15,7 @@ import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/rendering.dart';
 import 'package:just_audio/just_audio.dart';
+import '../services/native_audio_service.dart';
 import 'audio_screen.dart';
 
 class VideoScreen extends StatefulWidget {
@@ -82,6 +83,11 @@ class _VideoScreenState extends State<VideoScreen> {
   String? _aspectModeOverlayText;
   Timer? _aspectModeOverlayTimer;
 
+  StreamSubscription<Map<String, dynamic>>? _audioStateSub;
+  String _audioState = 'paused';
+  int _audioPositionMs = 0;
+  int? _audioTotalDurationMs;
+
   void _cycleAspectMode() {
     setState(() {
       _aspectModeIndex = (_aspectModeIndex + 1) % _aspectModes.length;
@@ -105,6 +111,13 @@ class _VideoScreenState extends State<VideoScreen> {
     _initBrightness();
     _startHideTimer();
     _audioPlayer = AudioPlayer();
+    _audioStateSub = NativeAudioService.playbackStateStream.listen((event) {
+      setState(() {
+        _audioState = event['state'] ?? 'paused';
+        _audioPositionMs = event['position'] ?? 0;
+        _audioTotalDurationMs = event['duration'];
+      });
+    });
   }
 
   Future<void> _initBrightness() async {
@@ -348,24 +361,25 @@ class _VideoScreenState extends State<VideoScreen> {
     if (file == null) return;
     final position = _controller!.value.position;
     await _controller!.pause();
-    await _audioPlayer!.setFilePath(file.path);
-    await _audioPlayer!.seek(position);
+    await NativeAudioService.startAudio(file.path, position.inMilliseconds);
     setState(() {
       _isAudioOnly = true;
       _isAudioPlayerReady = true;
     });
-    await _audioPlayer!.play();
   }
 
   Future<void> _switchToVideo() async {
-    if (_audioPlayer == null) return;
-    final position = _audioPlayer!.position;
-    await _audioPlayer!.pause();
-    await _controller?.seekTo(position);
+    // Stop native audio and get last position
+    final positionMs = _audioPositionMs;
+    await NativeAudioService.pauseAudio();
     setState(() {
       _isAudioOnly = false;
     });
-    await _controller?.play();
+    // Resume video from where audio stopped
+    if (_controller != null) {
+      await _controller!.seekTo(Duration(milliseconds: positionMs));
+      await _controller!.play();
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -377,6 +391,7 @@ class _VideoScreenState extends State<VideoScreen> {
 
   @override
   void dispose() {
+    _audioStateSub?.cancel();
     _hideTimer?.cancel();
     _controller?.pause();
     _controller?.dispose();
@@ -550,12 +565,14 @@ class _VideoScreenState extends State<VideoScreen> {
               children: [
                 if (_isAudioOnly)
                   AudioScreen(
-                    audioPlayer: _audioPlayer!,
                     isAudioPlayerReady: _isAudioPlayerReady,
                     formatDuration: _formatDuration,
                     onSwitchToVideo: () async {
                       await _switchToVideo();
                     },
+                    playbackState: _audioState,
+                    playbackPositionMs: _audioPositionMs,
+                    totalDurationMs: _audioTotalDurationMs,
                   ),
                 if (!_isAudioOnly)
                   Center(
