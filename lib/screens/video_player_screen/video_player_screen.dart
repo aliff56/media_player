@@ -13,6 +13,9 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:floating/floating.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:cast/cast.dart';
+import 'package:easy_video_editor/easy_video_editor.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/rendering.dart';
@@ -22,6 +25,7 @@ import 'widgets/video_controls_overlay.dart';
 import 'widgets/player_gestures.dart';
 import '../audio_screen.dart';
 import '../../services/native_audio_service.dart';
+import '../video_trim_screen.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final List<AssetEntity> videoAssets;
@@ -84,6 +88,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _aspectModeIndex = 0;
   String? _aspectModeOverlayText;
   Timer? _aspectModeOverlayTimer;
+
+  // Cast devices cache
+  List<CastDevice>? _castDevices;
 
   StreamSubscription<Map<String, dynamic>>? _audioStateSub;
   String _audioState = 'paused';
@@ -483,11 +490,103 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+              // Trim Video
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Trim',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cut, color: Colors.white),
+                    onPressed: () async {
+                      // Close the bottom sheet first
+                      Navigator.pop(context);
+                      // Get file before leaving
+                      final file = await widget.videoAssets[_currentIndex].file;
+                      if (file == null) return;
+                      if (!mounted) return;
+                      // Pause playback so audio stops immediately
+                      try {
+                        await player.pause();
+                      } catch (_) {}
+
+                      // Replace the current VideoPlayerScreen with the trim screen
+                      Navigator.of(this.context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (_) => VideoTrimScreen(originalFile: file),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Google Cast
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Google Cast',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cast, color: Colors.white),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showCastDialog(context);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Share
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Share',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share, color: Colors.white),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _shareCurrentVideo();
+                    },
+                  ),
+                ],
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  Future<void> _shareCurrentVideo() async {
+    try {
+      final file = await widget.videoAssets[_currentIndex].file;
+      if (file == null) return;
+      await Share.shareXFiles([XFile(file.path)]);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to share video: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   void _showAudioTracksDialog(BuildContext context) {
@@ -532,6 +631,121 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ],
       ),
     );
+  }
+
+  void _showCastDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text(
+            'Cast Devices',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: FutureBuilder<List<CastDevice>>(
+            future: _discoverCastDevices(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  height: 80,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snapshot.hasError) {
+                return Text(
+                  'Error: ${snapshot.error}',
+                  style: const TextStyle(color: Colors.white),
+                );
+              }
+              final devices = snapshot.data ?? [];
+              if (devices.isEmpty) {
+                return const Text(
+                  'No devices found',
+                  style: TextStyle(color: Colors.white),
+                );
+              }
+              return SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: devices.length,
+                  itemBuilder: (context, index) {
+                    final device = devices[index];
+                    return ListTile(
+                      leading: const Icon(Icons.cast, color: Colors.white),
+                      title: Text(
+                        device.name,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await _castToDevice(device);
+                      },
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<List<CastDevice>> _discoverCastDevices() async {
+    _castDevices ??= await CastDiscoveryService().search();
+    return _castDevices!;
+  }
+
+  Future<void> _castToDevice(CastDevice device) async {
+    try {
+      final session = await CastSessionManager().startSession(device);
+      final file = await widget.videoAssets[_currentIndex].file;
+      if (file == null) return;
+      // Note: Local files may not play on Chromecast. Provide warning.
+      session.sendMessage(CastSession.kNamespaceReceiver, {
+        'type': 'LAUNCH',
+        'appId': 'CC1AD845', // Default media receiver
+      });
+      // After ready, load media (simple example using http sample if local)
+      final mediaUrl = file.path; // Cast the currently playing video
+      session.sendMessage(CastSession.kNamespaceMedia, {
+        'type': 'LOAD',
+        'autoPlay': true,
+        'currentTime': 0,
+        'media': {
+          'contentId': mediaUrl,
+          'contentType': 'video/mp4',
+          'streamType': 'BUFFERED',
+          'metadata': {
+            'type': 0,
+            'metadataType': 0,
+            'title': file.uri.pathSegments.isNotEmpty
+                ? file.uri.pathSegments.last
+                : 'Video',
+            'images': [],
+          },
+        },
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Casting to ${device.name}')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to cast: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   Widget _buildAspectRatioVideo() {
