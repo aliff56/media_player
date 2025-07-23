@@ -5,6 +5,12 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
+import android.os.Build
+import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.video_player/audio_controls"
@@ -12,6 +18,16 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         var eventSink: EventChannel.EventSink? = null
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Request notification permission on Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+            }
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -66,6 +82,87 @@ class MainActivity : FlutterActivity() {
                     startService(intent)
                     result.success(null)
                 }
+                "getEqualizerBands" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getEqualizerBands() ?: 0)
+                }
+                "getEqualizerBandLevelRange" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    val range = service?.getEqualizerBandLevelRange()
+                    if (range != null) {
+                        result.success(listOf(range[0].toInt(), range[1].toInt()))
+                    } else {
+                        result.success(listOf(0, 0))
+                    }
+                }
+                "getEqualizerBandLevel" -> {
+                    val band = call.argument<Int>("band") ?: 0
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getEqualizerBandLevel(band)?.toInt() ?: 0)
+                }
+                "setEqualizerBandLevel" -> {
+                    val band = call.argument<Int>("band") ?: 0
+                    val level = call.argument<Int>("level")?.toShort() ?: 0
+                    val service = getAudioPlayerServiceInstance()
+                    service?.setEqualizerBandLevel(band, level)
+                    result.success(null)
+                }
+                "setEqualizerEnabled" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    val service = getAudioPlayerServiceInstance()
+                    service?.setEqualizerEnabled(enabled)
+                    result.success(null)
+                }
+                "getEqualizerEnabled" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getEqualizerEnabled() ?: true)
+                }
+                "setEqualizerPreset" -> {
+                    val preset = call.argument<Int>("preset") ?: 0
+                    val service = getAudioPlayerServiceInstance()
+                    service?.setEqualizerPreset(preset)
+                    result.success(null)
+                }
+                "getEqualizerPreset" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getEqualizerPreset() ?: 0)
+                }
+                "setReverbPreset" -> {
+                    val preset = call.argument<Int>("preset") ?: 0
+                    val service = getAudioPlayerServiceInstance()
+                    service?.setReverbPreset(preset)
+                    result.success(null)
+                }
+                "getReverbPreset" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getReverbPreset() ?: 0)
+                }
+                "setBassBoostStrength" -> {
+                    val strength = call.argument<Int>("strength") ?: 0
+                    val service = getAudioPlayerServiceInstance()
+                    service?.setBassBoostStrength(strength)
+                    result.success(null)
+                }
+                "getBassBoostStrength" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getBassBoostStrength() ?: 0)
+                }
+                "setVirtualizerStrength" -> {
+                    val strength = call.argument<Int>("strength") ?: 0
+                    val service = getAudioPlayerServiceInstance()
+                    service?.setVirtualizerStrength(strength)
+                    result.success(null)
+                }
+                "getVirtualizerStrength" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getVirtualizerStrength() ?: 0)
+                }
+                "getBandLevelsForPreset" -> {
+                    val preset = call.argument<Int>("preset") ?: 0
+                    val service = getAudioPlayerServiceInstance()
+                    val levels = service?.getBandLevelsForPreset(preset) ?: listOf<Int>()
+                    result.success(levels)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -79,5 +176,10 @@ class MainActivity : FlutterActivity() {
                 }
             }
         )
+    }
+
+    // Helper to get the running AudioPlayerService instance
+    private fun getAudioPlayerServiceInstance(): AudioPlayerService? {
+        return AudioPlayerService.instance
     }
 }

@@ -15,24 +15,73 @@ class NativeAudioService {
     });
   }
 
-  static Future<void> pauseAudio() async {
-    await _channel.invokeMethod('pauseAudio');
+  static Future<void> pauseAudio() async => _channel.invokeMethod('pauseAudio');
+  static Future<void> playAudio() async => _channel.invokeMethod('playAudio');
+  static Future<void> nextAudio() async => _channel.invokeMethod('nextAudio');
+  static Future<void> previousAudio() async =>
+      _channel.invokeMethod('previousAudio');
+  static Future<void> seekTo(int positionMs) async =>
+      _channel.invokeMethod('seekTo', {'position': positionMs});
+
+  // Equalizer & audio effects helpers
+  static Future<int> getEqualizerBands() async =>
+      (await _channel.invokeMethod<int>('getEqualizerBands')) ?? 0;
+
+  static Future<List<int>> getEqualizerBandLevelRange() async {
+    final result = await _channel.invokeMethod<List<dynamic>>(
+      'getEqualizerBandLevelRange',
+    );
+    return result?.map((e) => e as int).toList() ?? [0, 0];
   }
 
-  static Future<void> playAudio() async {
-    await _channel.invokeMethod('playAudio');
-  }
+  static Future<int> getEqualizerBandLevel(int band) async =>
+      (await _channel.invokeMethod<int>('getEqualizerBandLevel', {
+        'band': band,
+      })) ??
+      0;
 
-  static Future<void> nextAudio() async {
-    await _channel.invokeMethod('nextAudio');
-  }
+  static Future<void> setEqualizerBandLevel(int band, int level) async =>
+      _channel.invokeMethod('setEqualizerBandLevel', {
+        'band': band,
+        'level': level,
+      });
 
-  static Future<void> previousAudio() async {
-    await _channel.invokeMethod('previousAudio');
-  }
+  static Future<void> setEqualizerEnabled(bool enabled) async =>
+      _channel.invokeMethod('setEqualizerEnabled', {'enabled': enabled});
 
-  static Future<void> seekTo(int positionMs) async {
-    await _channel.invokeMethod('seekTo', {'position': positionMs});
+  static Future<bool> getEqualizerEnabled() async =>
+      (await _channel.invokeMethod<bool>('getEqualizerEnabled')) ?? true;
+
+  static Future<void> setEqualizerPreset(int preset) async =>
+      _channel.invokeMethod('setEqualizerPreset', {'preset': preset});
+
+  static Future<int> getEqualizerPreset() async =>
+      (await _channel.invokeMethod<int>('getEqualizerPreset')) ?? 0;
+
+  static Future<void> setReverbPreset(int preset) async =>
+      _channel.invokeMethod('setReverbPreset', {'preset': preset});
+
+  static Future<int> getReverbPreset() async =>
+      (await _channel.invokeMethod<int>('getReverbPreset')) ?? 0;
+
+  static Future<void> setBassBoostStrength(int strength) async =>
+      _channel.invokeMethod('setBassBoostStrength', {'strength': strength});
+
+  static Future<int> getBassBoostStrength() async =>
+      (await _channel.invokeMethod<int>('getBassBoostStrength')) ?? 0;
+
+  static Future<void> setVirtualizerStrength(int strength) async =>
+      _channel.invokeMethod('setVirtualizerStrength', {'strength': strength});
+
+  static Future<int> getVirtualizerStrength() async =>
+      (await _channel.invokeMethod<int>('getVirtualizerStrength')) ?? 0;
+
+  static Future<List<int>> getBandLevelsForPreset(int preset) async {
+    final result = await _channel.invokeMethod<List<dynamic>>(
+      'getBandLevelsForPreset',
+      {'preset': preset},
+    );
+    return result?.map((e) => e as int).toList() ?? [];
   }
 
   // Listen to playback state changes from native
