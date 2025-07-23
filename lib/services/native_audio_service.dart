@@ -23,6 +23,13 @@ class NativeAudioService {
   static Future<void> seekTo(int positionMs) async =>
       _channel.invokeMethod('seekTo', {'position': positionMs});
 
+  static Future<void> playNextAudio(String filePath, int positionMs) async {
+    await _channel.invokeMethod('playNextAudio', {
+      'filePath': filePath,
+      'position': positionMs,
+    });
+  }
+
   // Equalizer & audio effects helpers
   static Future<int> getEqualizerBands() async =>
       (await _channel.invokeMethod<int>('getEqualizerBands')) ?? 0;
@@ -83,6 +90,20 @@ class NativeAudioService {
     );
     return result?.map((e) => e as int).toList() ?? [];
   }
+
+  // Playback speed
+  static Future<void> setPlaybackSpeed(double speed) async =>
+      _channel.invokeMethod('setPlaybackSpeed', {'speed': speed});
+
+  static Future<double> getPlaybackSpeed() async =>
+      (await _channel.invokeMethod<double>('getPlaybackSpeed')) ?? 1.0;
+
+  // Set as ringtone (Android)
+  static Future<bool> setAsRingtone(String filePath) async =>
+      (await _channel.invokeMethod<bool>('setAsRingtone', {
+        'filePath': filePath,
+      })) ??
+      false;
 
   // Listen to playback state changes from native
   static Stream<Map<String, dynamic>> get playbackStateStream => _eventChannel

@@ -42,7 +42,12 @@ class MainActivity : FlutterActivity() {
                         putExtra("filePath", filePath)
                         putExtra("position", position)
                     }
-                    startForegroundService(intent)
+                    // Use startService if service is already running, otherwise startForegroundService
+                    if (AudioPlayerService.instance != null) {
+                        startService(intent)
+                    } else {
+                        startForegroundService(intent)
+                    }
                     result.success(null)
                 }
                 "pauseAudio" -> {
@@ -162,6 +167,39 @@ class MainActivity : FlutterActivity() {
                     val service = getAudioPlayerServiceInstance()
                     val levels = service?.getBandLevelsForPreset(preset) ?: listOf<Int>()
                     result.success(levels)
+                }
+                "setPlaybackSpeed" -> {
+                    val speed = call.argument<Double>("speed") ?: 1.0
+                    val intent = Intent(this, AudioPlayerService::class.java).apply {
+                        action = AudioPlayerService.ACTION_SET_SPEED
+                        putExtra("speed", speed.toFloat())
+                    }
+                    startService(intent)
+                    result.success(null)
+                }
+                "getPlaybackSpeed" -> {
+                    val service = getAudioPlayerServiceInstance()
+                    result.success(service?.getPlaybackSpeed()?.toDouble() ?: 1.0)
+                }
+                "setAsRingtone" -> {
+                    val path = call.argument<String>("filePath")
+                    if (path != null) {
+                        val success = AudioPlayerService.setAsRingtone(this, path)
+                        result.success(success)
+                    } else {
+                        result.error("ARG", "filePath missing", null)
+                    }
+                }
+                "playNextAudio" -> {
+                    val filePath = call.argument<String>("filePath")
+                    val position = call.argument<Int>("position") ?: 0
+                    val intent = Intent(this, AudioPlayerService::class.java).apply {
+                        action = AudioPlayerService.ACTION_START
+                        putExtra("filePath", filePath)
+                        putExtra("position", position)
+                    }
+                    startService(intent)
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }

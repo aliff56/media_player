@@ -12,6 +12,7 @@ class AudioScreen extends StatefulWidget {
   final int? totalDurationMs;
   final VoidCallback onNext;
   final VoidCallback onPrevious;
+  final VoidCallback? onMoreOptions;
 
   const AudioScreen({
     Key? key,
@@ -23,6 +24,7 @@ class AudioScreen extends StatefulWidget {
     this.totalDurationMs,
     required this.onNext,
     required this.onPrevious,
+    this.onMoreOptions,
   }) : super(key: key);
 
   @override
@@ -37,6 +39,8 @@ class _AudioScreenState extends State<AudioScreen>
   Ticker? _ticker;
   bool _isUserSeeking = false;
   int? _seekTarget;
+  Timer? _sleepTimer;
+  int? _sleepMinutes;
 
   @override
   void initState() {
@@ -75,6 +79,7 @@ class _AudioScreenState extends State<AudioScreen>
   @override
   void dispose() {
     _ticker?.dispose();
+    _sleepTimer?.cancel();
     super.dispose();
   }
 
@@ -119,6 +124,15 @@ class _AudioScreenState extends State<AudioScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton(
+                      icon: Icon(
+                        Icons.timer,
+                        color: _sleepTimer == null
+                            ? Colors.white
+                            : Colors.orange,
+                      ),
+                      onPressed: () => _showTimerSelector(context),
+                    ),
+                    IconButton(
                       icon: Icon(Icons.skip_previous, color: Colors.white),
                       iconSize: 48,
                       onPressed: widget.onPrevious,
@@ -146,6 +160,11 @@ class _AudioScreenState extends State<AudioScreen>
                       iconSize: 48,
                       onPressed: widget.onNext,
                     ),
+                    if (widget.onMoreOptions != null)
+                      IconButton(
+                        icon: const Icon(Icons.more_vert, color: Colors.white),
+                        onPressed: widget.onMoreOptions,
+                      ),
                   ],
                 ),
                 Slider(
@@ -433,5 +452,52 @@ class _AudioScreenState extends State<AudioScreen>
         );
       },
     );
+  }
+
+  void _showTimerSelector(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (c) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Off'),
+                onTap: () {
+                  _cancelSleepTimer();
+                  Navigator.pop(c);
+                },
+              ),
+              for (var m in [15, 30, 45, 60])
+                ListTile(
+                  title: Text('$m minutes'),
+                  onTap: () {
+                    _setSleepTimer(Duration(minutes: m));
+                    Navigator.pop(c);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _setSleepTimer(Duration d) {
+    _sleepTimer?.cancel();
+    _sleepTimer = Timer(d, () async {
+      await NativeAudioService.pauseAudio();
+      if (mounted) setState(() => _sleepTimer = null);
+    });
+    setState(() => _sleepMinutes = d.inMinutes);
+  }
+
+  void _cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    setState(() {
+      _sleepTimer = null;
+      _sleepMinutes = null;
+    });
   }
 }
