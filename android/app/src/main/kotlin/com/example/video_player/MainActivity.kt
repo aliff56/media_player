@@ -46,7 +46,7 @@ class MainActivity : FlutterActivity() {
                     if (AudioPlayerService.instance != null) {
                         startService(intent)
                     } else {
-                        startForegroundService(intent)
+                    startForegroundService(intent)
                     }
                     result.success(null)
                 }

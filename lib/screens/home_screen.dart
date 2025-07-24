@@ -78,22 +78,28 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
   }
 
   Future<void> _fetchAllVideos() async {
-    setState(() {
-      _loading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+      });
+    }
     final result = await VideoService.fetchAllVideos();
     if (result.permissionState == PermissionState.authorized ||
         result.permissionState == PermissionState.limited) {
-      setState(() {
-        _videoAssets = result.videos;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _videoAssets = result.videos;
+          _loading = false;
+        });
+      }
       _buildFolderMap(result.videos);
       _loadFavourites();
     } else {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -116,10 +122,12 @@ class _HomeScreenState extends State<HomeScreen> with RouteAware {
         folderMap.putIfAbsent(dir, () => []).add(asset);
       }
     }
-    setState(() {
-      _folderMap = folderMap;
-      _folderList = folderMap.keys.toList();
-    });
+    if (mounted) {
+      setState(() {
+        _folderMap = folderMap;
+        _folderList = folderMap.keys.toList();
+      });
+    }
   }
 
   void _startSearch() {

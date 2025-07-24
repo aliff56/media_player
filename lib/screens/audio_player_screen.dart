@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../services/native_audio_service.dart';
-import 'audio_screen.dart';
+import 'audio_screen_standalone.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AudioPlayerScreen extends StatefulWidget {
   final List<AssetEntity> audios;
@@ -27,10 +28,18 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   late final Stream<Map<String, dynamic>> _stateStream;
   late final StreamSubscription _sub;
   double _playbackSpeed = 1.0;
+  bool _isFavourite = false;
+  Set<String> _favourites = {};
+  late SharedPreferences _prefs;
+  List<String> _playlists = [];
+  String? _currentPlaylist;
+  final TextEditingController _playlistController = TextEditingController();
+  String _loopMode = 'order'; // 'order', 'loop', 'shuffle', 'stop'
 
   @override
   void initState() {
     super.initState();
+    _initPrefs();
     _currentIndex = widget.initialIndex;
     _stateStream = NativeAudioService.playbackStateStream;
     _sub = _stateStream.listen((event) async {
@@ -46,17 +55,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       }
       // Auto-play next track on completion
       if (event['state'] == 'completed') {
-        if (_currentIndex < widget.audios.length - 1) {
-          _currentIndex++;
-          final file = await widget.audios[_currentIndex].file;
-          if (file != null) {
-            await NativeAudioService.playNextAudio(file.path, 0);
-            setState(() {
-              _isAudioPlayerReady = true;
-            });
-            _playbackSpeed = await NativeAudioService.getPlaybackSpeed();
-          }
-        }
+        _handlePlaybackModeOnComplete();
         return;
       }
       setState(() {
@@ -66,6 +65,157 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       });
     });
     _startCurrent();
+  }
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _loadFavourites();
+    _loadPlaylists();
+  }
+
+  void _loadFavourites() {
+    final favs = _prefs.getStringList('audio_favourites') ?? [];
+    setState(() {
+      _favourites = favs.toSet();
+      _isFavourite = _favourites.contains(widget.audios[_currentIndex].id);
+    });
+  }
+
+  void _toggleFavourite() {
+    final id = widget.audios[_currentIndex].id;
+    final favs = _prefs.getStringList('audio_favourites') ?? [];
+    if (_favourites.contains(id)) {
+      favs.remove(id);
+    } else {
+      favs.add(id);
+    }
+    _prefs.setStringList('audio_favourites', favs);
+    setState(() {
+      _favourites = favs.toSet();
+      _isFavourite = _favourites.contains(id);
+    });
+  }
+
+  void _loadPlaylists() {
+    final keys = _prefs.getStringList('audio_playlists') ?? [];
+    setState(() {
+      _playlists = keys;
+    });
+  }
+
+  void _addToPlaylist(String playlist) {
+    final id = widget.audios[_currentIndex].id;
+    final list = _prefs.getStringList('playlist_$playlist') ?? [];
+    if (!list.contains(id)) {
+      list.add(id);
+      _prefs.setStringList('playlist_$playlist', list);
+    }
+  }
+
+  void _removeFromPlaylist(String playlist) {
+    final id = widget.audios[_currentIndex].id;
+    final list = _prefs.getStringList('playlist_$playlist') ?? [];
+    if (list.contains(id)) {
+      list.remove(id);
+      _prefs.setStringList('playlist_$playlist', list);
+    }
+  }
+
+  void _createPlaylist(String name) {
+    if (!_playlists.contains(name)) {
+      _playlists.add(name);
+      _prefs.setStringList('audio_playlists', _playlists);
+      _prefs.setStringList('playlist_$name', []);
+      setState(() {});
+      _loadPlaylists();
+    }
+  }
+
+  void _showPlaylistDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _playlistController,
+                                decoration: const InputDecoration(
+                                  hintText: 'New playlist name',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: 8,
+                                    horizontal: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.check),
+                              onPressed: () {
+                                final newPlaylist = _playlistController.text
+                                    .trim();
+                                if (newPlaylist.isNotEmpty) {
+                                  _createPlaylist(newPlaylist);
+                                  _playlistController.clear();
+                                  Navigator.pop(c);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      for (final playlist in _playlists)
+                        ListTile(
+                          leading: const Icon(Icons.queue_music),
+                          title: Text(playlist),
+                          trailing: IconButton(
+                            icon: Icon(
+                              (_prefs.getStringList('playlist_$playlist') ?? [])
+                                      .contains(widget.audios[_currentIndex].id)
+                                  ? Icons.check_box
+                                  : Icons.check_box_outline_blank,
+                            ),
+                            onPressed: () {
+                              final inPlaylist =
+                                  (_prefs.getStringList('playlist_$playlist') ??
+                                          [])
+                                      .contains(
+                                        widget.audios[_currentIndex].id,
+                                      );
+                              if (inPlaylist) {
+                                _removeFromPlaylist(playlist);
+                              } else {
+                                _addToPlaylist(playlist);
+                              }
+                              setModalState(() {});
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _startCurrent() async {
@@ -93,6 +243,56 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     }
   }
 
+  void _setLoopMode(String mode) {
+    setState(() {
+      _loopMode = mode;
+    });
+  }
+
+  Future<void> _handlePlaybackModeOnComplete() async {
+    final audios = widget.audios;
+    if (_loopMode == 'order') {
+      if (_currentIndex < audios.length - 1) {
+        _currentIndex++;
+        final file = await audios[_currentIndex].file;
+        if (file != null) {
+          await NativeAudioService.playNextAudio(file.path, 0);
+          setState(() {
+            _isAudioPlayerReady = true;
+          });
+          _playbackSpeed = await NativeAudioService.getPlaybackSpeed();
+        }
+      }
+      // else: do nothing (end of playlist)
+    } else if (_loopMode == 'loop') {
+      final file = await audios[_currentIndex].file;
+      if (file != null) {
+        await NativeAudioService.playNextAudio(file.path, 0);
+        setState(() {
+          _isAudioPlayerReady = true;
+        });
+        _playbackSpeed = await NativeAudioService.getPlaybackSpeed();
+      }
+    } else if (_loopMode == 'shuffle') {
+      final random = (audios.length > 1)
+          ? (List<int>.generate(audios.length, (i) => i)..remove(_currentIndex))
+          : [0];
+      random.shuffle();
+      final nextIndex = random.first;
+      _currentIndex = nextIndex;
+      final file = await audios[_currentIndex].file;
+      if (file != null) {
+        await NativeAudioService.playNextAudio(file.path, 0);
+        setState(() {
+          _isAudioPlayerReady = true;
+        });
+        _playbackSpeed = await NativeAudioService.getPlaybackSpeed();
+      }
+    } else if (_loopMode == 'stop') {
+      // Do nothing, stop playback
+    }
+  }
+
   void _showOptions() {
     showModalBottomSheet(
       context: context,
@@ -101,6 +301,68 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              ListTile(
+                leading: const Icon(Icons.repeat),
+                title: const Text('Playback Mode'),
+                subtitle: Text(
+                  _loopMode == 'order'
+                      ? 'Play in Order'
+                      : _loopMode == 'loop'
+                      ? 'Loop Current'
+                      : _loopMode == 'shuffle'
+                      ? 'Shuffle'
+                      : 'Stop After Current',
+                ),
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Playback Mode'),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          RadioListTile<String>(
+                            value: 'order',
+                            groupValue: _loopMode,
+                            title: const Text('Play in Order'),
+                            onChanged: (v) {
+                              _setLoopMode('order');
+                              Navigator.pop(context);
+                            },
+                          ),
+                          RadioListTile<String>(
+                            value: 'loop',
+                            groupValue: _loopMode,
+                            title: const Text('Loop Current'),
+                            onChanged: (v) {
+                              _setLoopMode('loop');
+                              Navigator.pop(context);
+                            },
+                          ),
+                          RadioListTile<String>(
+                            value: 'shuffle',
+                            groupValue: _loopMode,
+                            title: const Text('Shuffle'),
+                            onChanged: (v) {
+                              _setLoopMode('shuffle');
+                              Navigator.pop(context);
+                            },
+                          ),
+                          RadioListTile<String>(
+                            value: 'stop',
+                            groupValue: _loopMode,
+                            title: const Text('Stop After Current'),
+                            onChanged: (v) {
+                              _setLoopMode('stop');
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.speed),
                 title: const Text('Playback speed'),
@@ -185,19 +447,40 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.audios[_currentIndex].title ?? 'Audio'),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _isFavourite ? Icons.star : Icons.star_border,
+              color: Colors.amber,
+            ),
+            tooltip: _isFavourite ? 'Remove Favourite' : 'Add Favourite',
+            onPressed: _toggleFavourite,
+          ),
+          IconButton(
+            icon: const Icon(Icons.playlist_add),
+            tooltip: 'Add to Playlist',
+            onPressed: _showPlaylistDialog,
+          ),
+        ],
       ),
       body: Container(
         color: Colors.black,
-        child: AudioScreen(
+        child: AudioScreenStandalone(
           isAudioPlayerReady: _isAudioPlayerReady,
           formatDuration: _formatDuration,
-          onSwitchToVideo: () {}, // not applicable
           playbackState: _playbackState,
           playbackPositionMs: _positionMs,
           totalDurationMs: _durationMs,
           onNext: _playNext,
           onPrevious: _playPrevious,
           onMoreOptions: _showOptions,
+          onPlayPause: () async {
+            if (_playbackState == 'playing') {
+              await NativeAudioService.pauseAudio();
+            } else {
+              await NativeAudioService.playAudio();
+            }
+          },
         ),
       ),
     );
