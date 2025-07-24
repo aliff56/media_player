@@ -5,6 +5,8 @@ import 'package:photo_manager/photo_manager.dart';
 import '../services/native_audio_service.dart';
 import 'audio_screen_standalone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/native_album_art.dart';
+import 'dart:typed_data';
 
 class AudioPlayerScreen extends StatefulWidget {
   final List<AssetEntity> audios;
@@ -444,6 +446,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentAudio = widget.audios[_currentIndex];
+    String? lyrics =
+        'Sample lyrics for this audio.\nMore lines...\n(Integrate real lyrics here)';
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.audios[_currentIndex].title ?? 'Audio'),
@@ -465,21 +470,65 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       ),
       body: Container(
         color: Colors.black,
-        child: AudioScreenStandalone(
-          isAudioPlayerReady: _isAudioPlayerReady,
-          formatDuration: _formatDuration,
-          playbackState: _playbackState,
-          playbackPositionMs: _positionMs,
-          totalDurationMs: _durationMs,
-          onNext: _playNext,
-          onPrevious: _playPrevious,
-          onMoreOptions: _showOptions,
-          onPlayPause: () async {
-            if (_playbackState == 'playing') {
-              await NativeAudioService.pauseAudio();
-            } else {
-              await NativeAudioService.playAudio();
+        child: FutureBuilder<File?>(
+          future: currentAudio.file,
+          builder: (context, fileSnapshot) {
+            if (!fileSnapshot.hasData || fileSnapshot.data == null) {
+              return AudioScreenStandalone(
+                isAudioPlayerReady: _isAudioPlayerReady,
+                formatDuration: _formatDuration,
+                playbackState: _playbackState,
+                playbackPositionMs: _positionMs,
+                totalDurationMs: _durationMs,
+                onNext: _playNext,
+                onPrevious: _playPrevious,
+                onMoreOptions: _showOptions,
+                onPlayPause: () async {
+                  if (_playbackState == 'playing') {
+                    await NativeAudioService.pauseAudio();
+                  } else {
+                    await NativeAudioService.playAudio();
+                  }
+                },
+                onSeek: (ms) async {
+                  await NativeAudioService.seekTo(ms);
+                },
+                albumArt: null,
+                lyrics: lyrics,
+              );
             }
+            final contentUri = currentAudio.id;
+            return FutureBuilder<Uint8List?>(
+              future: NativeAlbumArt.getAlbumArt(contentUri),
+              builder: (context, artSnapshot) {
+                ImageProvider? albumArt;
+                if (artSnapshot.hasData && artSnapshot.data != null) {
+                  albumArt = MemoryImage(artSnapshot.data!);
+                }
+                return AudioScreenStandalone(
+                  isAudioPlayerReady: _isAudioPlayerReady,
+                  formatDuration: _formatDuration,
+                  playbackState: _playbackState,
+                  playbackPositionMs: _positionMs,
+                  totalDurationMs: _durationMs,
+                  onNext: _playNext,
+                  onPrevious: _playPrevious,
+                  onMoreOptions: _showOptions,
+                  onPlayPause: () async {
+                    if (_playbackState == 'playing') {
+                      await NativeAudioService.pauseAudio();
+                    } else {
+                      await NativeAudioService.playAudio();
+                    }
+                  },
+                  onSeek: (ms) async {
+                    await NativeAudioService.seekTo(ms);
+                  },
+                  albumArt: albumArt,
+                  lyrics: lyrics,
+                );
+              },
+            );
           },
         ),
       ),

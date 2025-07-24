@@ -11,10 +11,12 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.media.MediaMetadataRetriever
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.video_player/audio_controls"
     private val EVENT_CHANNEL = "com.example.video_player/audio_events"
+    private val CHANNEL_NATIVE_ALBUM_ART = "native_album_art"
 
     companion object {
         var eventSink: EventChannel.EventSink? = null
@@ -200,6 +202,33 @@ class MainActivity : FlutterActivity() {
                     }
                     startService(intent)
                     result.success(null)
+                }
+                "getAlbumArt" -> {
+                    val filePath = call.argument<String>("filePath")
+                    if (filePath != null) {
+                        val retriever = MediaMetadataRetriever()
+                        try {
+                            val art: ByteArray?
+                            if (filePath.startsWith("content://")) {
+                                val uri = android.net.Uri.parse(filePath)
+                                retriever.setDataSource(this, uri)
+                            } else {
+                                retriever.setDataSource(filePath)
+                            }
+                            art = retriever.embeddedPicture
+                            retriever.release()
+                            if (art != null) {
+                                result.success(art)
+                            } else {
+                                result.success(null)
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("getAlbumArt", "Failed to get album art for $filePath", e)
+                            result.success(null)
+                        }
+                    } else {
+                        result.success(null)
+                    }
                 }
                 else -> result.notImplemented()
             }

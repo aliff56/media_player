@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../main.dart';
 import 'dart:ui';
 
-class MediaFileCard extends StatelessWidget {
+class MediaFileCard extends StatefulWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
@@ -27,104 +27,187 @@ class MediaFileCard extends StatelessWidget {
   });
 
   @override
+  State<MediaFileCard> createState() => _MediaFileCardState();
+}
+
+class _MediaFileCardState extends State<MediaFileCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
-        margin: const EdgeInsets.all(8),
+        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(28),
-          color: overlayColor.withOpacity(0.38),
+          color: widget.overlayColor.withOpacity(0.28),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF06141B).withOpacity(0.22),
+              color: const Color(0xFF06141B).withOpacity(0.18),
               blurRadius: 18,
               offset: const Offset(0, 6),
             ),
           ],
           border: Border.all(
-            color: const Color(0xFF253745).withOpacity(0.18),
             width: 1.2,
+            style: BorderStyle.solid,
+            color: Colors.white.withOpacity(0.10),
           ),
         ),
+        clipBehavior: Clip.hardEdge,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(18.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Icon(icon, size: 36, color: const Color(0xFFCCD0CF)),
-                          if (isFavourite)
-                            Icon(
-                              Icons.star,
-                              color: const Color(0xFFCCD0CF),
-                              size: 22,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFFCCD0CF),
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF9BA8AB),
-                            fontSize: 13,
+          child: Stack(
+            children: [
+              // Liquid glass blur
+              BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: const SizedBox.expand(),
+              ),
+              // Animated wavy highlight
+              AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  final double anim = _controller.value;
+                  return Positioned(
+                    top: 0,
+                    left: -40 + 80 * anim,
+                    child: Opacity(
+                      opacity: 0.18 + 0.12 * (1 - (anim - 0.5).abs() * 2),
+                      child: Container(
+                        width: 120,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(40),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withOpacity(0.45),
+                              Colors.white.withOpacity(0.0),
+                            ],
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (duration != null)
-                  Positioned(
-                    right: 14,
-                    bottom: 14,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF06141B).withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        duration!,
-                        style: const TextStyle(
-                          color: Color(0xFFCCD0CF),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
+                  );
+                },
+              ),
+              // Top radial highlight
+              Positioned(
+                top: -30,
+                left: -30,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.white.withOpacity(0.18),
+                        Colors.transparent,
+                      ],
+                      radius: 0.8,
+                    ),
                   ),
-              ],
-            ),
+                ),
+              ),
+              // Card content
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Icon(
+                          widget.icon,
+                          size: 32,
+                          color: const Color(0xFFCCD0CF),
+                        ),
+                        if (widget.isFavourite)
+                          Icon(
+                            Icons.star,
+                            color: const Color(0xFFCCD0CF),
+                            size: 20,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFCCD0CF),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    if (widget.subtitle != null) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        widget.subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF9BA8AB),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (widget.duration != null)
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF06141B).withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      widget.duration!,
+                      style: const TextStyle(
+                        color: Color(0xFFCCD0CF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -341,30 +424,54 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> with RouteAware {
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                decoration: const InputDecoration(
+                style: const TextStyle(color: Color(0xFFCCD0CF)),
+                decoration: InputDecoration(
                   hintText: 'Search audio...',
                   border: InputBorder.none,
+                  hintStyle: const TextStyle(color: Color(0xFF9BA8AB)),
+                  filled: true,
+                  fillColor: const Color(0xFF4A5C6A).withOpacity(0.18),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    color: Color(0xFF4A5C6A),
+                  ),
                 ),
               )
             : const Text('Audio Browser'),
-        actions: [
-          IconButton(
-            icon: Icon(_showFolders ? Icons.list : Icons.folder),
-            tooltip: _showFolders ? 'Show All Audio' : 'Browse by Folder',
-            onPressed: () {
-              setState(() {
-                _showFolders = !_showFolders;
-                _selectedFolder = null;
-              });
-            },
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF06141B), Color(0xFF11212D), Color(0xFF4A5C6A)],
+              stops: [0.0, 0.5, 1.0],
+            ),
           ),
+        ),
+        foregroundColor: const Color(0xFFCCD0CF),
+        centerTitle: true,
+        titleTextStyle: const TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.1,
+        ),
+        actions: [
           if (_isSearching)
-            IconButton(icon: const Icon(Icons.close), onPressed: _stopSearch)
+            IconButton(
+              icon: const Icon(Icons.close, color: Color(0xFF9BA8AB)),
+              onPressed: _stopSearch,
+            )
           else ...[
-            IconButton(icon: const Icon(Icons.search), onPressed: _startSearch),
+            IconButton(
+              icon: const Icon(Icons.search, color: Color(0xFF4A5C6A)),
+              onPressed: _startSearch,
+            ),
           ],
         ],
       ),
+      extendBodyBehindAppBar: true,
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -382,238 +489,288 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> with RouteAware {
             stops: [0.0, 0.2, 0.45, 0.75, 1.0],
           ),
         ),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.queue_music),
-                          label: const Text('Playlist'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+        child: Padding(
+          padding: EdgeInsets.only(
+            top: kToolbarHeight + MediaQuery.of(context).padding.top,
+          ),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          ElevatedButton.icon(
+                            icon: const Icon(
+                              Icons.queue_music,
+                              color: Color(0xFF4A5C6A),
                             ),
-                            textStyle: const TextStyle(fontSize: 16),
-                          ),
-                          onPressed: _showPlaylistSelectDialog,
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Refresh'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey[800],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+                            label: const Text('Playlist'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(
+                                0xFF9BA8AB,
+                              ).withOpacity(0.85),
+                              foregroundColor: const Color(0xFF06141B),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              shadowColor: const Color(
+                                0xFF06141B,
+                              ).withOpacity(0.18),
+                              elevation: 4,
                             ),
-                            textStyle: const TextStyle(fontSize: 16),
+                            onPressed: _showPlaylistSelectDialog,
                           ),
-                          onPressed: _fetchAllAudios,
-                        ),
-                      ],
+                          const SizedBox(width: 12),
+                          ElevatedButton.icon(
+                            icon: Icon(
+                              _showFolders ? Icons.list : Icons.folder,
+                              color: const Color(0xFF4A5C6A),
+                            ),
+                            label: Text(_showFolders ? 'All Audio' : 'Folders'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(
+                                0xFF4A5C6A,
+                              ).withOpacity(0.85),
+                              foregroundColor: const Color(0xFFCCD0CF),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              shadowColor: const Color(
+                                0xFF06141B,
+                              ).withOpacity(0.18),
+                              elevation: 4,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _showFolders = !_showFolders;
+                                _selectedFolder = null;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: _showFolders
-                        ? _selectedFolder == null
-                              ? GridView.builder(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 8,
-                                  ),
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 2,
-                                        childAspectRatio: 1.05,
+                    Expanded(
+                      child: _showFolders
+                          ? _selectedFolder == null
+                                ? GridView.builder(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 8,
+                                    ),
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 2,
+                                          childAspectRatio: 1.05,
+                                        ),
+                                    itemCount: _folderList.length,
+                                    itemBuilder: (context, index) {
+                                      final folder = _folderList[index];
+                                      final count =
+                                          _folderMap[folder]?.length ?? 0;
+                                      final overlayColor = index % 2 == 0
+                                          ? const Color(0xFF4A5C6A)
+                                          : const Color(0xFF9BA8AB);
+                                      return MediaFileCard(
+                                        icon: Icons.folder,
+                                        title: folder
+                                            .split(Platform.pathSeparator)
+                                            .last,
+                                        subtitle:
+                                            '$count audio file${count == 1 ? '' : 's'}',
+                                        isFavourite: false,
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedFolder = folder;
+                                          });
+                                        },
+                                        overlayColor: overlayColor,
+                                      );
+                                    },
+                                  )
+                                : Column(
+                                    children: [
+                                      ListTile(
+                                        leading: const Icon(
+                                          Icons.arrow_back,
+                                          color: Colors.white,
+                                        ),
+                                        title: const Text(
+                                          'Back to Folders',
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedFolder = null;
+                                          });
+                                        },
                                       ),
-                                  itemCount: _folderList.length,
-                                  itemBuilder: (context, index) {
-                                    final folder = _folderList[index];
-                                    final count =
-                                        _folderMap[folder]?.length ?? 0;
-                                    final overlayColor = index % 2 == 0
-                                        ? const Color(0xFF4A5C6A)
-                                        : const Color(0xFF9BA8AB);
+                                      Expanded(
+                                        child: GridView.builder(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 8,
+                                          ),
+                                          gridDelegate:
+                                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                                crossAxisCount: 2,
+                                                childAspectRatio: 1.05,
+                                              ),
+                                          itemCount: folderAudios.length,
+                                          itemBuilder: (context, index) {
+                                            final asset = folderAudios[index];
+                                            final overlayColor = index % 2 == 0
+                                                ? const Color(0xFF4A5C6A)
+                                                : const Color(0xFF9BA8AB);
+                                            return FutureBuilder<File?>(
+                                              future: asset.file,
+                                              builder: (context, snap) {
+                                                if (!snap.hasData) {
+                                                  return MediaFileCard(
+                                                    icon: Icons.music_note,
+                                                    title: 'Loading...',
+                                                    isFavourite: false,
+                                                    onTap: () {},
+                                                    overlayColor: overlayColor,
+                                                  );
+                                                }
+                                                final file = snap.data!;
+                                                return MediaFileCard(
+                                                  icon: Icons.music_note,
+                                                  title:
+                                                      asset.title ??
+                                                      file.path.split('/').last,
+                                                  isFavourite: _favourites
+                                                      .contains(asset.id),
+                                                  onTap: () {
+                                                    final fullList =
+                                                        folderAudios;
+                                                    final initialIndex =
+                                                        fullList.indexWhere(
+                                                          (a) =>
+                                                              a.id == asset.id,
+                                                        );
+                                                    if (initialIndex != -1) {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              AudioPlayerScreen(
+                                                                audios:
+                                                                    fullList,
+                                                                initialIndex:
+                                                                    initialIndex,
+                                                              ),
+                                                        ),
+                                                      );
+                                                    }
+                                                  },
+                                                  overlayColor: overlayColor,
+                                                );
+                                              },
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                          : audiosToShow.isEmpty
+                          ? Center(
+                              child: Text(
+                                _isSearching
+                                    ? 'No results.'
+                                    : 'No audio found.',
+                                style: const TextStyle(
+                                  color: Color(0xFF9BA8AB),
+                                ),
+                              ),
+                            )
+                          : GridView.builder(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    childAspectRatio: 1.05,
+                                  ),
+                              itemCount: audiosToShow.length,
+                              itemBuilder: (context, index) {
+                                final asset = audiosToShow[index];
+                                final overlayColor = index % 2 == 0
+                                    ? const Color(0xFF4A5C6A)
+                                    : const Color(0xFF9BA8AB);
+                                return FutureBuilder<File?>(
+                                  future: asset.file,
+                                  builder: (context, snap) {
+                                    if (!snap.hasData) {
+                                      return MediaFileCard(
+                                        icon: Icons.music_note,
+                                        title: 'Loading...',
+                                        isFavourite: false,
+                                        onTap: () {},
+                                        overlayColor: overlayColor,
+                                      );
+                                    }
+                                    final file = snap.data!;
                                     return MediaFileCard(
-                                      icon: Icons.folder,
-                                      title: folder
-                                          .split(Platform.pathSeparator)
-                                          .last,
-                                      subtitle:
-                                          '$count audio file${count == 1 ? '' : 's'}',
-                                      isFavourite: false,
+                                      icon: Icons.music_note,
+                                      title:
+                                          asset.title ??
+                                          file.path.split('/').last,
+                                      isFavourite: _favourites.contains(
+                                        asset.id,
+                                      ),
                                       onTap: () {
-                                        setState(() {
-                                          _selectedFolder = folder;
-                                        });
+                                        final fullList = audiosToShow;
+                                        final initialIndex = fullList
+                                            .indexWhere(
+                                              (a) => a.id == asset.id,
+                                            );
+                                        if (initialIndex != -1) {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => AudioPlayerScreen(
+                                                audios: fullList,
+                                                initialIndex: initialIndex,
+                                              ),
+                                            ),
+                                          );
+                                        }
                                       },
                                       overlayColor: overlayColor,
                                     );
                                   },
-                                )
-                              : Column(
-                                  children: [
-                                    ListTile(
-                                      leading: const Icon(
-                                        Icons.arrow_back,
-                                        color: Colors.white,
-                                      ),
-                                      title: const Text(
-                                        'Back to Folders',
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedFolder = null;
-                                        });
-                                      },
-                                    ),
-                                    Expanded(
-                                      child: GridView.builder(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 8,
-                                        ),
-                                        gridDelegate:
-                                            const SliverGridDelegateWithFixedCrossAxisCount(
-                                              crossAxisCount: 2,
-                                              childAspectRatio: 1.05,
-                                            ),
-                                        itemCount: folderAudios.length,
-                                        itemBuilder: (context, index) {
-                                          final asset = folderAudios[index];
-                                          final overlayColor = index % 2 == 0
-                                              ? const Color(0xFF4A5C6A)
-                                              : const Color(0xFF9BA8AB);
-                                          return FutureBuilder<File?>(
-                                            future: asset.file,
-                                            builder: (context, snap) {
-                                              if (!snap.hasData) {
-                                                return MediaFileCard(
-                                                  icon: Icons.music_note,
-                                                  title: 'Loading...',
-                                                  isFavourite: false,
-                                                  onTap: () {},
-                                                  overlayColor: overlayColor,
-                                                );
-                                              }
-                                              final file = snap.data!;
-                                              return MediaFileCard(
-                                                icon: Icons.music_note,
-                                                title:
-                                                    asset.title ??
-                                                    file.path.split('/').last,
-                                                isFavourite: _favourites
-                                                    .contains(asset.id),
-                                                onTap: () {
-                                                  final fullList = folderAudios;
-                                                  final initialIndex = fullList
-                                                      .indexWhere(
-                                                        (a) => a.id == asset.id,
-                                                      );
-                                                  if (initialIndex != -1) {
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            AudioPlayerScreen(
-                                                              audios: fullList,
-                                                              initialIndex:
-                                                                  initialIndex,
-                                                            ),
-                                                      ),
-                                                    );
-                                                  }
-                                                },
-                                                overlayColor: overlayColor,
-                                              );
-                                            },
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                )
-                        : audiosToShow.isEmpty
-                        ? Center(
-                            child: Text(
-                              _isSearching ? 'No results.' : 'No audio found.',
-                              style: const TextStyle(color: Color(0xFF9BA8AB)),
+                                );
+                              },
                             ),
-                          )
-                        : GridView.builder(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 8,
-                            ),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  childAspectRatio: 1.05,
-                                ),
-                            itemCount: audiosToShow.length,
-                            itemBuilder: (context, index) {
-                              final asset = audiosToShow[index];
-                              final overlayColor = index % 2 == 0
-                                  ? const Color(0xFF4A5C6A)
-                                  : const Color(0xFF9BA8AB);
-                              return FutureBuilder<File?>(
-                                future: asset.file,
-                                builder: (context, snap) {
-                                  if (!snap.hasData) {
-                                    return MediaFileCard(
-                                      icon: Icons.music_note,
-                                      title: 'Loading...',
-                                      isFavourite: false,
-                                      onTap: () {},
-                                      overlayColor: overlayColor,
-                                    );
-                                  }
-                                  final file = snap.data!;
-                                  return MediaFileCard(
-                                    icon: Icons.music_note,
-                                    title:
-                                        asset.title ??
-                                        file.path.split('/').last,
-                                    isFavourite: _favourites.contains(asset.id),
-                                    onTap: () {
-                                      final fullList = audiosToShow;
-                                      final initialIndex = fullList.indexWhere(
-                                        (a) => a.id == asset.id,
-                                      );
-                                      if (initialIndex != -1) {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => AudioPlayerScreen(
-                                              audios: fullList,
-                                              initialIndex: initialIndex,
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    overlayColor: overlayColor,
-                                  );
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

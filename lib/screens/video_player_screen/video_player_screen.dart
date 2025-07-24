@@ -151,6 +151,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void dispose() {
     _audioStateSub?.cancel();
     _hideTimer?.cancel();
+    _aspectModeOverlayTimer?.cancel();
     player.dispose();
     _completedSub?.cancel();
     _positionSub?.cancel();
@@ -1060,22 +1061,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 cycleAspectMode: _cycleAspectMode,
                 startHideTimer: _startHideTimer,
                 aspectModeOverlayText: _aspectModeOverlayText,
-                bookmarks: _bookmarks,
-                onBookmarkTap: (ms) => player.seek(Duration(milliseconds: ms)),
-              ),
-            if (!_isAudioOnly)
-              BottomControls(
-                player: player,
-                isPlayerInitialized: isPlayerInitialized,
-                onCaptureScreenshot: _captureAndSaveScreenshot,
-                onMute: () => _setMute(!_isMuted),
-                isMuted: _isMuted,
-                onPlayPrevious: _playPrevious,
-                canPlayPrevious: _currentIndex > 0,
-                onPlayNext: _playNext,
-                canPlayNext: _currentIndex < widget.videoAssets.length - 1,
-                formatDuration: _formatDuration,
-                startHideTimer: _startHideTimer,
                 bookmarks: _bookmarks,
                 onBookmarkTap: (ms) => player.seek(Duration(milliseconds: ms)),
               ),
