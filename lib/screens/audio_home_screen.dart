@@ -16,6 +16,10 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> {
   bool _loading = true;
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
+  bool _showFolders = false;
+  Map<String, List<AssetEntity>> _folderMap = {};
+  List<String> _folderList = [];
+  String? _selectedFolder;
 
   @override
   void initState() {
@@ -33,6 +37,7 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> {
         _audioAssets = result.audios;
         _loading = false;
       });
+      _buildFolderMap(result.audios);
     } else {
       setState(() => _loading = false);
       if (mounted) {
@@ -44,6 +49,21 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> {
         PhotoManager.openSetting();
       }
     }
+  }
+
+  void _buildFolderMap(List<AssetEntity> assets) async {
+    final Map<String, List<AssetEntity>> folderMap = {};
+    for (final asset in assets) {
+      final file = await asset.file;
+      if (file != null) {
+        final dir = file.parent.path;
+        folderMap.putIfAbsent(dir, () => []).add(asset);
+      }
+    }
+    setState(() {
+      _folderMap = folderMap;
+      _folderList = folderMap.keys.toList();
+    });
   }
 
   void _startSearch() => setState(() => _isSearching = true);
@@ -69,6 +89,10 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> {
             return title.contains(q);
           }).toList()
         : _audioAssets;
+    final List<AssetEntity> folderAudios =
+        _selectedFolder != null && _folderMap[_selectedFolder!] != null
+        ? List<AssetEntity>.from(_folderMap[_selectedFolder!]!)
+        : <AssetEntity>[];
     return Scaffold(
       appBar: AppBar(
         title: _isSearching
@@ -81,26 +105,116 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> {
                 ),
               )
             : const Text('Audio Browser'),
-        actions: _isSearching
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: _stopSearch,
-                ),
-              ]
-            : [
-                IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _startSearch,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _fetchAllAudios,
-                ),
-              ],
+        actions: [
+          IconButton(
+            icon: Icon(_showFolders ? Icons.list : Icons.folder),
+            tooltip: _showFolders ? 'Show All Audio' : 'Browse by Folder',
+            onPressed: () {
+              setState(() {
+                _showFolders = !_showFolders;
+                _selectedFolder = null;
+              });
+            },
+          ),
+          if (_isSearching)
+            IconButton(icon: const Icon(Icons.close), onPressed: _stopSearch)
+          else ...[
+            IconButton(icon: const Icon(Icons.search), onPressed: _startSearch),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _fetchAllAudios,
+            ),
+          ],
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _showFolders
+          ? _selectedFolder == null
+                ? ListView.builder(
+                    itemCount: _folderList.length,
+                    itemBuilder: (context, index) {
+                      final folder = _folderList[index];
+                      final count = _folderMap[folder]?.length ?? 0;
+                      return ListTile(
+                        leading: const Icon(Icons.folder, color: Colors.amber),
+                        title: Text(
+                          folder.split(Platform.pathSeparator).last,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '$count audio file${count == 1 ? '' : 's'}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _selectedFolder = folder;
+                          });
+                        },
+                      );
+                    },
+                  )
+                : Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.white,
+                        ),
+                        title: const Text(
+                          'Back to Folders',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            _selectedFolder = null;
+                          });
+                        },
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: folderAudios.length,
+                          itemBuilder: (context, index) {
+                            final asset = folderAudios[index];
+                            return FutureBuilder<File?>(
+                              future: asset.file,
+                              builder: (context, snap) {
+                                if (!snap.hasData) {
+                                  return const ListTile(
+                                    title: Text('Loading...'),
+                                  );
+                                }
+                                final file = snap.data!;
+                                return ListTile(
+                                  leading: const Icon(Icons.music_note),
+                                  title: Text(
+                                    asset.title ?? file.path.split('/').last,
+                                  ),
+                                  onTap: () {
+                                    final fullList = folderAudios;
+                                    final initialIndex = fullList.indexWhere(
+                                      (a) => a.id == asset.id,
+                                    );
+                                    if (initialIndex != -1) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => AudioPlayerScreen(
+                                            audios: fullList,
+                                            initialIndex: initialIndex,
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  )
           : audiosToShow.isEmpty
           ? Center(
               child: Text(_isSearching ? 'No results.' : 'No audio found.'),

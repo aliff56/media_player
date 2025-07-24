@@ -4,6 +4,8 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'screens/home_screen.dart';
 import 'screens/landing_screen.dart';
 
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
@@ -14,12 +16,13 @@ Future<void> main() async {
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
 
-  @override 
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Video Player',
       theme: ThemeData.dark(),
       home: const LandingScreen(),
+      navigatorObservers: [routeObserver],
     );
   }
 }

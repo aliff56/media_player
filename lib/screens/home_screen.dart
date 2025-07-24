@@ -7,6 +7,9 @@ import 'package:photo_manager/photo_manager.dart';
 import '../services/video_service.dart';
 import '../services/permission_service.dart';
 import 'video_player_screen/video_player_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import '../../main.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -15,7 +18,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with RouteAware {
   List<AssetEntity> _videoAssets = [];
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
@@ -23,16 +26,54 @@ class _HomeScreenState extends State<HomeScreen> {
   late final VideoController videoController;
   String? _currentVideoName;
   bool _loading = true;
+  bool _showFolders = false;
+  Map<String, List<AssetEntity>> _folderMap = {};
+  List<String> _folderList = [];
+  String? _selectedFolder;
+  Set<String> _favourites = {};
+  late SharedPreferences _prefs;
 
   @override
   void initState() {
     super.initState();
     player = Player();
     videoController = VideoController(player);
+    _initPrefs();
     _fetchAllVideos();
     // The listener just triggers a rebuild.
     _searchController.addListener(() {
       setState(() {});
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)! as PageRoute);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    // Called when coming back to this screen
+    _fetchAllVideos();
+  }
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _loadFavourites();
+  }
+
+  void _loadFavourites() {
+    final favs = _prefs.getStringList('favourites') ?? [];
+    setState(() {
+      _favourites = favs.toSet();
     });
   }
 
@@ -47,6 +88,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _videoAssets = result.videos;
         _loading = false;
       });
+      _buildFolderMap(result.videos);
+      _loadFavourites();
     } else {
       setState(() {
         _loading = false;
@@ -62,6 +105,21 @@ class _HomeScreenState extends State<HomeScreen> {
         PhotoManager.openSetting();
       }
     }
+  }
+
+  void _buildFolderMap(List<AssetEntity> assets) async {
+    final Map<String, List<AssetEntity>> folderMap = {};
+    for (final asset in assets) {
+      final file = await asset.file;
+      if (file != null) {
+        final dir = file.parent.path;
+        folderMap.putIfAbsent(dir, () => []).add(asset);
+      }
+    }
+    setState(() {
+      _folderMap = folderMap;
+      _folderList = folderMap.keys.toList();
+    });
   }
 
   void _startSearch() {
@@ -89,13 +147,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
-  void dispose() {
-    player.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     // Filter the list directly inside the build method.
     final videosToShow = _isSearching
@@ -105,6 +156,10 @@ class _HomeScreenState extends State<HomeScreen> {
             return title.contains(query);
           }).toList()
         : _videoAssets;
+    final List<AssetEntity> folderVideos =
+        _selectedFolder != null && _folderMap[_selectedFolder!] != null
+        ? List<AssetEntity>.from(_folderMap[_selectedFolder!]!)
+        : <AssetEntity>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -133,163 +188,301 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               )
             : null,
-        actions: _isSearching
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: _stopSearch,
-                ),
-              ]
-            : [
-                IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _startSearch,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _fetchAllVideos,
-                  tooltip: 'Reload Videos',
-                ),
-              ],
+        actions: [
+          IconButton(
+            icon: Icon(_showFolders ? Icons.list : Icons.folder),
+            tooltip: _showFolders ? 'Show All Videos' : 'Browse by Folder',
+            onPressed: () {
+              setState(() {
+                _showFolders = !_showFolders;
+                _selectedFolder = null;
+              });
+            },
+          ),
+          if (_isSearching)
+            IconButton(icon: const Icon(Icons.close), onPressed: _stopSearch)
+          else ...[
+            IconButton(icon: const Icon(Icons.search), onPressed: _startSearch),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _fetchAllVideos,
+              tooltip: 'Reload Videos',
+            ),
+          ],
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : videosToShow.isEmpty
-          ? Center(
-              child: Text(
-                _isSearching
-                    ? 'No results found.'
-                    : 'No videos found on device.',
-              ),
-            )
           : Column(
               children: [
-                if (player.state.playlist.medias.isNotEmpty)
-                  Flexible(child: Video(controller: videoController)),
-                if (_currentVideoName != null)
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Text(
-                      _currentVideoName!,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                const Divider(),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: videosToShow.length,
-                    itemBuilder: (context, index) {
-                      final asset = videosToShow[index];
-                      return FutureBuilder<File?>(
-                        future: asset.file,
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const ListTile(
-                              leading: SizedBox(
-                                width: 56,
-                                height: 56,
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                              title: Text('Loading...'),
-                            );
-                          }
-                          final file = snapshot.data!;
-                          return FutureBuilder<Uint8List?>(
-                            future: asset.thumbnailDataWithSize(
-                              ThumbnailSize(80, 80),
+                if (_showFolders)
+                  if (_selectedFolder == null)
+                    // Folders list
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: _folderList.length,
+                        itemBuilder: (context, index) {
+                          final folder = _folderList[index];
+                          final count = _folderMap[folder]?.length ?? 0;
+                          return ListTile(
+                            leading: const Icon(
+                              Icons.folder,
+                              color: Colors.amber,
                             ),
-                            builder: (context, thumbSnapshot) {
-                              Widget leadingWidget;
-                              if (thumbSnapshot.connectionState ==
-                                      ConnectionState.done &&
-                                  thumbSnapshot.hasData &&
-                                  thumbSnapshot.data != null) {
-                                leadingWidget = Container(
-                                  width: 80,
-                                  height: 80,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    // No boxShadow here
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.memory(
-                                      thumbSnapshot.data!,
-                                      width: 80,
-                                      height: 80,
-                                      fit: BoxFit.cover,
+                            title: Text(
+                              folder.split(Platform.pathSeparator).last,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                            subtitle: Text(
+                              '$count video${count == 1 ? '' : 's'}',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                            onTap: () {
+                              setState(() {
+                                _selectedFolder = folder;
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    )
+                  else ...[
+                    ListTile(
+                      leading: const Icon(
+                        Icons.arrow_back,
+                        color: Colors.white,
+                      ),
+                      title: const Text(
+                        'Back to Folders',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          _selectedFolder = null;
+                        });
+                      },
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: folderVideos.length,
+                        itemBuilder: (context, index) {
+                          final asset = folderVideos[index];
+                          return FutureBuilder<File?>(
+                            future: asset.file,
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const ListTile(
+                                  leading: SizedBox(
+                                    width: 56,
+                                    height: 56,
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
                                     ),
                                   ),
+                                  title: Text('Loading...'),
                                 );
-                              } else {
-                                leadingWidget = const SizedBox(
-                                  width: 80,
-                                  height: 80,
+                              }
+                              final file = snapshot.data!;
+                              return FutureBuilder<Uint8List?>(
+                                future: asset.thumbnailDataWithSize(
+                                  ThumbnailSize(80, 80),
+                                ),
+                                builder: (context, thumbSnapshot) {
+                                  Widget leadingWidget;
+                                  if (thumbSnapshot.connectionState ==
+                                          ConnectionState.done &&
+                                      thumbSnapshot.hasData &&
+                                      thumbSnapshot.data != null) {
+                                    leadingWidget = Container(
+                                      width: 80,
+                                      height: 80,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.memory(
+                                          thumbSnapshot.data!,
+                                          width: 80,
+                                          height: 80,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    leadingWidget = const SizedBox(
+                                      width: 80,
+                                      height: 80,
+                                      child: Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    );
+                                  }
+                                  return ListTile(
+                                    leading: leadingWidget,
+                                    title: Text(
+                                      asset.title ??
+                                          file.path
+                                              .split(Platform.pathSeparator)
+                                              .last,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    onTap: () async {
+                                      final fullList = folderVideos;
+                                      final initialIndex = fullList.indexWhere(
+                                        (a) => a.id == asset.id,
+                                      );
+                                      if (initialIndex != -1) {
+                                        final result =
+                                            await Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    VideoPlayerScreen(
+                                                      videoAssets: fullList,
+                                                      initialIndex:
+                                                          initialIndex,
+                                                    ),
+                                              ),
+                                            );
+                                        if (result == true) {
+                                          _loadFavourites();
+                                          setState(() {});
+                                        }
+                                      }
+                                    },
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ]
+                else if (videosToShow.isEmpty)
+                  const Expanded(
+                    child: Center(
+                      child: Text(
+                        'No videos found.',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: videosToShow.length,
+                      itemBuilder: (context, index) {
+                        final asset = videosToShow[index];
+                        return FutureBuilder<File?>(
+                          future: asset.file,
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const ListTile(
+                                leading: SizedBox(
+                                  width: 56,
+                                  height: 56,
                                   child: Center(
                                     child: CircularProgressIndicator(),
                                   ),
-                                );
-                              }
-                              return Container(
-                                margin: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                  horizontal: 12,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors
-                                      .grey[850], // Changed from Colors.white
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(
-                                        0.4,
-                                      ), // Softened shadow
-                                      offset: const Offset(0, 4),
-                                      blurRadius: 8,
+                                title: Text('Loading...'),
+                              );
+                            }
+                            final file = snapshot.data!;
+                            return FutureBuilder<Uint8List?>(
+                              future: asset.thumbnailDataWithSize(
+                                ThumbnailSize(80, 80),
+                              ),
+                              builder: (context, thumbSnapshot) {
+                                Widget leadingWidget;
+                                if (thumbSnapshot.connectionState ==
+                                        ConnectionState.done &&
+                                    thumbSnapshot.hasData &&
+                                    thumbSnapshot.data != null) {
+                                  leadingWidget = Stack(
+                                    children: [
+                                      Container(
+                                        width: 80,
+                                        height: 80,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: Image.memory(
+                                            thumbSnapshot.data!,
+                                            width: 80,
+                                            height: 80,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                      if (_favourites.contains(asset.id))
+                                        const Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: Icon(
+                                            Icons.star,
+                                            color: Colors.amber,
+                                            size: 24,
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                } else {
+                                  leadingWidget = const SizedBox(
+                                    width: 80,
+                                    height: 80,
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
                                     ),
-                                  ],
-                                ),
-                                child: ListTile(
+                                  );
+                                }
+                                return ListTile(
                                   leading: leadingWidget,
                                   title: Text(
                                     asset.title ??
                                         file.path
                                             .split(Platform.pathSeparator)
                                             .last,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                    ), // Changed text color
+                                    style: const TextStyle(color: Colors.white),
                                   ),
-                                  onTap: () {
-                                    // Always pass the full list of assets
+                                  onTap: () async {
                                     final fullList = _videoAssets;
-                                    // Find the actual index in the full list
                                     final initialIndex = fullList.indexWhere(
                                       (a) => a.id == asset.id,
                                     );
-
                                     if (initialIndex != -1) {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => VideoPlayerScreen(
-                                            videoAssets: fullList,
-                                            initialIndex: initialIndex,
-                                          ),
-                                        ),
-                                      );
+                                      final result = await Navigator.of(context)
+                                          .push(
+                                            MaterialPageRoute(
+                                              builder: (_) => VideoPlayerScreen(
+                                                videoAssets: fullList,
+                                                initialIndex: initialIndex,
+                                              ),
+                                            ),
+                                          );
+                                      if (result == true) {
+                                        _loadFavourites();
+                                        setState(() {});
+                                      }
                                     }
                                   },
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
               ],
             ),
     );

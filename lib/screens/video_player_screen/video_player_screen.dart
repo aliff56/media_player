@@ -20,12 +20,16 @@ import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/rendering.dart';
 import 'package:media_store_plus/media_store_plus.dart' show MediaStorePlatform;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math' as math;
+import 'package:flutter/cupertino.dart';
 
 import 'widgets/video_controls_overlay.dart';
 import 'widgets/player_gestures.dart';
 import '../audio_screen.dart';
 import '../../services/native_audio_service.dart';
 import '../video_trim_screen.dart';
+import 'widgets/bottom_controls.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final List<AssetEntity> videoAssets;
@@ -97,7 +101,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _audioPositionMs = 0;
   int? _audioTotalDurationMs;
 
+  StreamSubscription? _completedSub;
+  StreamSubscription<Duration>? _positionSub;
+
   bool get isPlayerInitialized => player.state.playlist.medias.isNotEmpty;
+
+  bool _vrMode = false;
+  bool _mirrorMode = false;
+  bool _isFavourite = false;
+  List<int> _bookmarks = [];
+  String _loopMode = 'order'; // 'order', 'loop', 'shuffle', 'stop'
+  late SharedPreferences _prefs;
 
   @override
   void initState() {
@@ -105,6 +119,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     player = Player();
     controller = VideoController(player);
     _currentIndex = widget.initialIndex;
+    _initPrefs();
     _initializeAndPlay(_currentIndex);
     _initBrightness();
     _startHideTimer();
@@ -117,6 +132,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         });
       }
     });
+    _completedSub = player.stream.completed.listen((completed) {
+      if (completed == true) {
+        _handlePlaybackModeOnComplete();
+      }
+    });
+    _positionSub = player.stream.position.listen((pos) {
+      final duration = player.state.duration;
+      if (duration.inMilliseconds > 0 &&
+          (pos.inMilliseconds >= duration.inMilliseconds - 500) &&
+          !_isSeeking) {
+        _handlePlaybackModeOnComplete();
+      }
+    });
   }
 
   @override
@@ -124,6 +152,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _audioStateSub?.cancel();
     _hideTimer?.cancel();
     player.dispose();
+    _completedSub?.cancel();
+    _positionSub?.cancel();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -131,6 +161,77 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     super.dispose();
+  }
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _loadFavourites();
+    _loadBookmarks();
+    _loadLoopMode();
+  }
+
+  void _loadFavourites() {
+    final file = widget.videoAssets[_currentIndex].id;
+    final favs = _prefs.getStringList('favourites') ?? [];
+    setState(() {
+      _isFavourite = favs.contains(file);
+    });
+  }
+
+  void _toggleFavourite() {
+    final file = widget.videoAssets[_currentIndex].id;
+    final favs = _prefs.getStringList('favourites') ?? [];
+    if (_isFavourite) {
+      favs.remove(file);
+    } else {
+      favs.add(file);
+    }
+    _prefs.setStringList('favourites', favs);
+    setState(() {
+      _isFavourite = !_isFavourite;
+    });
+  }
+
+  void _loadBookmarks() {
+    final file = widget.videoAssets[_currentIndex].id;
+    final marks = _prefs.getStringList('bookmarks_$file') ?? [];
+    setState(() {
+      _bookmarks = marks.map((e) => int.tryParse(e) ?? 0).toList();
+    });
+  }
+
+  void _addBookmark() {
+    final file = widget.videoAssets[_currentIndex].id;
+    final pos = player.state.position.inMilliseconds;
+    if (!_bookmarks.contains(pos)) {
+      _bookmarks.add(pos);
+      _prefs.setStringList(
+        'bookmarks_$file',
+        _bookmarks.map((e) => e.toString()).toList(),
+      );
+      setState(() {});
+    }
+  }
+
+  void _removeBookmark(int pos) {
+    final file = widget.videoAssets[_currentIndex].id;
+    _bookmarks.remove(pos);
+    _prefs.setStringList(
+      'bookmarks_$file',
+      _bookmarks.map((e) => e.toString()).toList(),
+    );
+    setState(() {});
+  }
+
+  void _loadLoopMode() {
+    _loopMode = _prefs.getString('loop_mode') ?? 'order';
+    setState(() {});
+  }
+
+  void _setLoopMode(String mode) {
+    _loopMode = mode;
+    _prefs.setString('loop_mode', mode);
+    setState(() {});
   }
 
   void _cycleAspectMode() {
@@ -168,6 +269,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       player.setVolume(_currentVolume * 100);
       player.setRate(_playbackSpeed);
       _setInitialOrientation();
+      _loadFavourites();
+      _loadBookmarks();
     }
   }
 
@@ -408,170 +511,218 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _showMoreOptions(BuildContext context) {
-    showModalBottomSheet(
+    showCupertinoModalPopup(
       context: context,
-      backgroundColor: Colors.grey[900],
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Playback Speed
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Playback Speed',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  PopupMenuButton<double>(
-                    initialValue: _playbackSpeed,
-                    tooltip: 'Playback Speed',
-                    onSelected: (speed) {
-                      if (mounted) {
-                        setState(() {
-                          _playbackSpeed = speed;
-                        });
-                      }
-                      player.setRate(speed);
-                      Navigator.pop(context);
-                    },
-                    color: Colors.grey[800],
-                    itemBuilder: (context) => _speedOptions
-                        .map(
-                          (speed) => PopupMenuItem<double>(
-                            value: speed,
-                            child: Text(
-                              '${speed}x',
-                              style: TextStyle(
-                                color: speed == _playbackSpeed
-                                    ? Colors.blue
-                                    : Colors.white,
-                              ),
-                            ),
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('Options'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              setState(() => _vrMode = !_vrMode);
+              Navigator.pop(context);
+            },
+            child: Row(
+              children: [
+                Icon(Icons.vrpano, color: _vrMode ? Colors.blue : Colors.grey),
+                const SizedBox(width: 12),
+                Text(_vrMode ? 'Disable VR Mode' : 'Enable VR Mode'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              setState(() => _mirrorMode = !_mirrorMode);
+              Navigator.pop(context);
+            },
+            child: Row(
+              children: [
+                Icon(
+                  Icons.flip,
+                  color: _mirrorMode ? Colors.blue : Colors.grey,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _mirrorMode ? 'Disable Mirror Mode' : 'Enable Mirror Mode',
+                ),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              _addBookmark();
+              Navigator.pop(context);
+            },
+            child: Row(
+              children: const [
+                Icon(Icons.bookmark_add, color: Colors.deepPurple),
+                SizedBox(width: 12),
+                Text('Add Bookmark'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              _toggleFavourite();
+              Navigator.pop(context);
+            },
+            child: Row(
+              children: [
+                Icon(
+                  _isFavourite ? Icons.star : Icons.star_border,
+                  color: Colors.amber,
+                ),
+                const SizedBox(width: 12),
+                Text(_isFavourite ? 'Remove Favourite' : 'Add Favourite'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              showCupertinoModalPopup(
+                context: context,
+                builder: (context) => CupertinoActionSheet(
+                  title: const Text('Playback Mode'),
+                  actions: [
+                    CupertinoActionSheetAction(
+                      onPressed: () {
+                        _setLoopMode('order');
+                        Navigator.pop(context);
+                      },
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.queue_play_next,
+                            color: _loopMode == 'order'
+                                ? Colors.blue
+                                : Colors.grey,
                           ),
-                        )
-                        .toList(),
-                    child: Text(
-                      '${_playbackSpeed}x',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                          const SizedBox(width: 12),
+                          const Text('Play in Order'),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Audio Tracks
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Audio Tracks',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                    CupertinoActionSheetAction(
+                      onPressed: () {
+                        _setLoopMode('loop');
+                        Navigator.pop(context);
+                      },
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.repeat_one,
+                            color: _loopMode == 'loop'
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Loop Current'),
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.audiotrack, color: Colors.white),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showAudioTracksDialog(context);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Trim Video
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Trim',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                    CupertinoActionSheetAction(
+                      onPressed: () {
+                        _setLoopMode('shuffle');
+                        Navigator.pop(context);
+                      },
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.shuffle,
+                            color: _loopMode == 'shuffle'
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Shuffle'),
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.cut, color: Colors.white),
-                    onPressed: () async {
-                      // Close the bottom sheet first
-                      Navigator.pop(context);
-                      // Get file before leaving
-                      final file = await widget.videoAssets[_currentIndex].file;
-                      if (file == null) return;
-                      if (!mounted) return;
-                      // Pause playback so audio stops immediately
-                      try {
-                        await player.pause();
-                      } catch (_) {}
-
-                      // Replace the current VideoPlayerScreen with the trim screen
-                      Navigator.of(this.context).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (_) => VideoTrimScreen(originalFile: file),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Google Cast
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Google Cast',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                    CupertinoActionSheetAction(
+                      onPressed: () {
+                        _setLoopMode('stop');
+                        Navigator.pop(context);
+                      },
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.stop,
+                            color: _loopMode == 'stop'
+                                ? Colors.blue
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Stop After Current'),
+                        ],
+                      ),
                     ),
+                  ],
+                  cancelButton: CupertinoActionSheetAction(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.cast, color: Colors.white),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showCastDialog(context);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Share
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Share',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.share, color: Colors.white),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _shareCurrentVideo();
-                    },
-                  ),
-                ],
-              ),
-            ],
+                ),
+              );
+            },
+            child: Row(
+              children: const [
+                Icon(Icons.repeat, color: Colors.deepPurple),
+                SizedBox(width: 12),
+                Text('Playback Mode'),
+              ],
+            ),
           ),
-        );
-      },
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              final speed = await showCupertinoModalPopup<double>(
+                context: context,
+                builder: (context) => CupertinoActionSheet(
+                  title: const Text('Playback Speed'),
+                  actions: _speedOptions
+                      .map(
+                        (s) => CupertinoActionSheetAction(
+                          onPressed: () => Navigator.pop(context, s),
+                          child: Text(
+                            '${s}x',
+                            style: TextStyle(
+                              color: s == _playbackSpeed
+                                  ? Colors.blue
+                                  : Colors.black,
+                              fontWeight: s == _playbackSpeed
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  cancelButton: CupertinoActionSheetAction(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+              );
+              if (speed != null) {
+                setState(() {
+                  _playbackSpeed = speed;
+                });
+                player.setRate(speed);
+              }
+            },
+            child: Row(
+              children: [
+                Icon(Icons.speed, color: Colors.deepPurple),
+                const SizedBox(width: 12),
+                Text('Playback Speed: ${_playbackSpeed}x'),
+              ],
+            ),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
     );
   }
 
@@ -844,7 +995,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 child: isPlayerInitialized
                     ? RepaintBoundary(
                         key: _videoScreenshotKey,
-                        child: _buildAspectRatioVideo(),
+                        child: _vrMode
+                            ? Row(
+                                children: [
+                                  Expanded(child: _buildTransformedVideo()),
+                                  Expanded(child: _buildTransformedVideo()),
+                                ],
+                              )
+                            : _buildTransformedVideo(),
                       )
                     : const CircularProgressIndicator(),
               ),
@@ -879,11 +1037,69 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 cycleAspectMode: _cycleAspectMode,
                 startHideTimer: _startHideTimer,
                 aspectModeOverlayText: _aspectModeOverlayText,
+                bookmarks: _bookmarks,
+                onBookmarkTap: (ms) => player.seek(Duration(milliseconds: ms)),
+              ),
+            if (!_isAudioOnly)
+              BottomControls(
+                player: player,
+                isPlayerInitialized: isPlayerInitialized,
+                onCaptureScreenshot: _captureAndSaveScreenshot,
+                onMute: () => _setMute(!_isMuted),
+                isMuted: _isMuted,
+                onPlayPrevious: _playPrevious,
+                canPlayPrevious: _currentIndex > 0,
+                onPlayNext: _playNext,
+                canPlayNext: _currentIndex < widget.videoAssets.length - 1,
+                formatDuration: _formatDuration,
+                startHideTimer: _startHideTimer,
+                bookmarks: _bookmarks,
+                onBookmarkTap: (ms) => player.seek(Duration(milliseconds: ms)),
               ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildTransformedVideo() {
+    Widget video = _buildAspectRatioVideo();
+    if (_mirrorMode) {
+      video = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.rotationY(math.pi),
+        child: video,
+      );
+    }
+    return video;
+  }
+
+  void _handlePlaybackModeOnComplete() {
+    if (_loopMode == 'order') {
+      if (_currentIndex < widget.videoAssets.length - 1) {
+        setState(() {
+          _currentIndex++;
+        });
+        _initializeAndPlay(_currentIndex);
+      }
+      // else: do nothing (end of playlist)
+    } else if (_loopMode == 'loop') {
+      _initializeAndPlay(_currentIndex);
+    } else if (_loopMode == 'shuffle') {
+      final random = math.Random();
+      int nextIndex = _currentIndex;
+      if (widget.videoAssets.length > 1) {
+        while (nextIndex == _currentIndex) {
+          nextIndex = random.nextInt(widget.videoAssets.length);
+        }
+      }
+      setState(() {
+        _currentIndex = nextIndex;
+      });
+      _initializeAndPlay(_currentIndex);
+    } else if (_loopMode == 'stop') {
+      // Do nothing, stop playback
+    }
   }
 }
 

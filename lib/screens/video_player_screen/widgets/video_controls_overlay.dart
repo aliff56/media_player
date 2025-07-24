@@ -36,6 +36,8 @@ class VideoControlsOverlay extends StatelessWidget {
   final String? aspectModeOverlayText;
 
   final String Function(Duration) formatDuration;
+  final List<int> bookmarks;
+  final void Function(int ms) onBookmarkTap;
 
   const VideoControlsOverlay({
     Key? key,
@@ -65,6 +67,8 @@ class VideoControlsOverlay extends StatelessWidget {
     required this.showBrightnessOverlay,
     required this.formatDuration,
     required this.startHideTimer,
+    required this.bookmarks,
+    required this.onBookmarkTap,
     this.aspectModeOverlayText,
   }) : super(key: key);
 
@@ -112,6 +116,8 @@ class VideoControlsOverlay extends StatelessWidget {
             canPlayNext: canPlayNext,
             formatDuration: formatDuration,
             startHideTimer: startHideTimer,
+            bookmarks: bookmarks,
+            onBookmarkTap: onBookmarkTap,
           ),
         ],
       ],
