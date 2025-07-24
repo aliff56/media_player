@@ -49,7 +49,7 @@ class _BottomControlsState extends State<BottomControls> {
       bottom: 0,
       child: Container(
         padding: const EdgeInsets.only(bottom: 16.0),
-        color: Colors.black.withOpacity(0.35),
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.7),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -59,7 +59,7 @@ class _BottomControlsState extends State<BottomControls> {
                 IconButton(
                   icon: const Icon(Icons.camera_alt),
                   onPressed: widget.onCaptureScreenshot,
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.primary,
                   iconSize: 32,
                 ),
                 IconButton(
@@ -67,13 +67,17 @@ class _BottomControlsState extends State<BottomControls> {
                     widget.isMuted ? Icons.volume_off : Icons.volume_up,
                   ),
                   onPressed: widget.onMute,
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.primary,
                   iconSize: 32,
                 ),
                 IconButton(
                   icon: const Icon(Icons.skip_previous),
                   onPressed: widget.onPlayPrevious,
-                  color: widget.canPlayPrevious ? Colors.white : Colors.white24,
+                  color: widget.canPlayPrevious
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.3),
                   iconSize: 36,
                 ),
                 IconButton(
@@ -81,7 +85,7 @@ class _BottomControlsState extends State<BottomControls> {
                   onPressed: () => widget.player.seek(
                     widget.player.state.position - const Duration(seconds: 10),
                   ),
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.primary,
                   iconSize: 36,
                 ),
                 StreamBuilder<bool>(
@@ -96,7 +100,7 @@ class _BottomControlsState extends State<BottomControls> {
                             : Icons.play_circle_filled,
                       ),
                       onPressed: widget.player.playOrPause,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.primary,
                       iconSize: 48,
                     );
                   },
@@ -106,13 +110,17 @@ class _BottomControlsState extends State<BottomControls> {
                   onPressed: () => widget.player.seek(
                     widget.player.state.position + const Duration(seconds: 10),
                   ),
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.primary,
                   iconSize: 36,
                 ),
                 IconButton(
                   icon: const Icon(Icons.skip_next),
                   onPressed: widget.onPlayNext,
-                  color: widget.canPlayNext ? Colors.white : Colors.white24,
+                  color: widget.canPlayNext
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.3),
                   iconSize: 36,
                 ),
               ],

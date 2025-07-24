@@ -77,11 +77,13 @@ class VideoControlsOverlay extends StatelessWidget {
     return Stack(
       children: [
         if (showSeekOverlay && isPlayerInitialized)
-          StatusOverlays.seek(offset: seekOffsetSeconds),
-        if (showVolumeOverlay) StatusOverlays.volume(volume: currentVolume),
-        if (showBrightnessOverlay) StatusOverlays.brightness(currentBrightness),
+          StatusOverlays.seek(context: context, offset: seekOffsetSeconds),
+        if (showVolumeOverlay)
+          StatusOverlays.volume(context: context, volume: currentVolume),
+        if (showBrightnessOverlay)
+          StatusOverlays.brightness(context, currentBrightness),
         if (aspectModeOverlayText != null)
-          StatusOverlays.aspectRatio(aspectModeOverlayText!),
+          StatusOverlays.aspectRatio(context, aspectModeOverlayText!),
 
         if (isLocked)
           Positioned(

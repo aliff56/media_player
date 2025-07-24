@@ -94,29 +94,43 @@ class _AudioScreenState extends State<AudioScreen>
           ? Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.audiotrack, color: Colors.white, size: 80),
+                Icon(
+                  Icons.audiotrack,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 80,
+                ),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
                   onPressed: widget.onSwitchToVideo,
-                  icon: Icon(Icons.videocam, color: Colors.white),
+                  icon: Icon(
+                    Icons.videocam,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   label: Text(
                     'Switch to Video',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueGrey,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                   ),
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: () => _showEqualizerDialog(context),
-                  icon: Icon(Icons.equalizer, color: Colors.white),
+                  icon: Icon(
+                    Icons.equalizer,
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
                   label: Text(
                     'Equalizer',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSecondary,
+                    ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
+                    backgroundColor: Theme.of(context).colorScheme.secondary,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -127,19 +141,22 @@ class _AudioScreenState extends State<AudioScreen>
                       icon: Icon(
                         Icons.timer,
                         color: _sleepTimer == null
-                            ? Colors.white
-                            : Colors.orange,
+                            ? Theme.of(context).colorScheme.onSurface
+                            : Theme.of(context).colorScheme.error,
                       ),
                       onPressed: () => _showTimerSelector(context),
                     ),
                     IconButton(
-                      icon: Icon(Icons.skip_previous, color: Colors.white),
+                      icon: Icon(
+                        Icons.skip_previous,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                       iconSize: 48,
                       onPressed: widget.onPrevious,
                     ),
                     IconButton(
                       iconSize: 64,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onSurface,
                       icon: Icon(
                         widget.playbackState == 'playing'
                             ? Icons.pause
@@ -156,13 +173,19 @@ class _AudioScreenState extends State<AudioScreen>
                       },
                     ),
                     IconButton(
-                      icon: Icon(Icons.skip_next, color: Colors.white),
+                      icon: Icon(
+                        Icons.skip_next,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                       iconSize: 48,
                       onPressed: widget.onNext,
                     ),
                     if (widget.onMoreOptions != null)
                       IconButton(
-                        icon: const Icon(Icons.more_vert, color: Colors.white),
+                        icon: Icon(
+                          Icons.more_vert,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                         onPressed: widget.onMoreOptions,
                       ),
                   ],
@@ -188,7 +211,9 @@ class _AudioScreenState extends State<AudioScreen>
                 Text(
                   '${widget.formatDuration(Duration(milliseconds: _sliderValue.toInt()))} / '
                   '${widget.formatDuration(Duration(milliseconds: widget.totalDurationMs ?? 0))}',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ],
             )
@@ -242,9 +267,9 @@ class _AudioScreenState extends State<AudioScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.grey[900],
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (context) {
         return StatefulBuilder(
@@ -257,19 +282,21 @@ class _AudioScreenState extends State<AudioScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Equalizer',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'ON',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           ),
                           Switch(
                             value: eqEnabled,
@@ -321,14 +348,20 @@ class _AudioScreenState extends State<AudioScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Reverb',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                       ),
                       DropdownButton<int>(
                         value: reverbPreset,
-                        dropdownColor: Colors.grey[850],
-                        style: const TextStyle(color: Colors.white),
+                        dropdownColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceVariant,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                         items: [
                           DropdownMenuItem(value: 0, child: Text('None')),
                           DropdownMenuItem(value: 1, child: Text('Small Room')),
@@ -357,9 +390,11 @@ class _AudioScreenState extends State<AudioScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'BassBooster',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                       ),
                       Expanded(
                         child: Slider(
@@ -379,9 +414,11 @@ class _AudioScreenState extends State<AudioScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Virtualizer',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                       ),
                       Expanded(
                         child: Slider(
@@ -408,8 +445,8 @@ class _AudioScreenState extends State<AudioScreen>
                           children: [
                             Text(
                               '${[60, 230, 910, 3600, 14000][i % 5]}Hz',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface,
                                 fontSize: 12,
                               ),
                             ),
@@ -440,9 +477,11 @@ class _AudioScreenState extends State<AudioScreen>
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text(
+                    child: Text(
                       'Close',
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ],

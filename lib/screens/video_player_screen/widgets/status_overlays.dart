@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 
 class StatusOverlays {
-  static Widget seek({required double offset}) {
+  static Widget seek({required BuildContext context, required double offset}) {
     return Center(
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(16),
+          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(24),
         ),
         child: Text(
           '${offset > 0 ? '+' : ''}${offset.round()}s',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 28,
             fontWeight: FontWeight.bold,
           ),
@@ -21,21 +21,31 @@ class StatusOverlays {
     );
   }
 
-  static Widget volume({required double volume}) {
+  static Widget volume({
+    required BuildContext context,
+    required double volume,
+  }) {
     return Center(
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(16),
+          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(24),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.volume_up, color: Colors.white, size: 32),
+            Icon(
+              Icons.volume_up,
+              color: Theme.of(context).colorScheme.primary,
+              size: 32,
+            ),
             Text(
               '${(volume * 100).round()}%',
-              style: const TextStyle(color: Colors.white, fontSize: 20),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 20,
+              ),
             ),
           ],
         ),
@@ -43,22 +53,29 @@ class StatusOverlays {
     );
   }
 
-  static Widget brightness(double level) {
+  static Widget brightness(BuildContext context, double level) {
     return Center(
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
+          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(24),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.brightness_6, color: Colors.white, size: 40),
+            Icon(
+              Icons.brightness_6,
+              color: Theme.of(context).colorScheme.primary,
+              size: 40,
+            ),
             const SizedBox(height: 8),
             Text(
               '${(level * 100).toInt()}%',
-              style: const TextStyle(color: Colors.white, fontSize: 16),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 16,
+              ),
             ),
           ],
         ),
@@ -66,18 +83,18 @@ class StatusOverlays {
     );
   }
 
-  static Widget aspectRatio(String text) {
+  static Widget aspectRatio(BuildContext context, String text) {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
+          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(24),
         ),
         child: Text(
           text,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),

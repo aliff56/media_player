@@ -717,6 +717,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ],
             ),
           ),
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.pop(context);
+              final file = await widget.videoAssets[_currentIndex].file;
+              if (file == null) return;
+              if (!mounted) return;
+              try {
+                await player.pause();
+              } catch (_) {}
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => VideoTrimScreen(originalFile: file),
+                ),
+              );
+            },
+            child: Row(
+              children: const [
+                Icon(Icons.cut, color: Colors.red),
+                SizedBox(width: 12),
+                Text('Trim Video'),
+              ],
+            ),
+          ),
         ],
         cancelButton: CupertinoActionSheetAction(
           onPressed: () => Navigator.pop(context),

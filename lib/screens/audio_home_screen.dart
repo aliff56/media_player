@@ -5,6 +5,132 @@ import '../services/audio_service.dart';
 import 'audio_player_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../main.dart';
+import 'dart:ui';
+
+class MediaFileCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final bool isFavourite;
+  final VoidCallback onTap;
+  final Color overlayColor;
+  final String? duration;
+  const MediaFileCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    required this.isFavourite,
+    required this.onTap,
+    required this.overlayColor,
+    this.duration,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        margin: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          color: overlayColor.withOpacity(0.38),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF06141B).withOpacity(0.22),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+          border: Border.all(
+            color: const Color(0xFF253745).withOpacity(0.18),
+            width: 1.2,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(18.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Icon(icon, size: 36, color: const Color(0xFFCCD0CF)),
+                          if (isFavourite)
+                            Icon(
+                              Icons.star,
+                              color: const Color(0xFFCCD0CF),
+                              size: 22,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFCCD0CF),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF9BA8AB),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (duration != null)
+                  Positioned(
+                    right: 14,
+                    bottom: 14,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF06141B).withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        duration!,
+                        style: const TextStyle(
+                          color: Color(0xFFCCD0CF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class AudioHomeScreen extends StatefulWidget {
   const AudioHomeScreen({Key? key}) : super(key: key);
@@ -239,211 +365,256 @@ class _AudioHomeScreenState extends State<AudioHomeScreen> with RouteAware {
           ],
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.queue_music),
-                        label: const Text('Playlist'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF06141B),
+              Color(0xFF11212D),
+              Color(0xFF253745),
+              Color(0xFF4A5C6A),
+              Color(0xFF9BA8AB),
+            ],
+            stops: [0.0, 0.2, 0.45, 0.75, 1.0],
+          ),
+        ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.queue_music),
+                          label: const Text('Playlist'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            textStyle: const TextStyle(fontSize: 16),
                           ),
-                          textStyle: const TextStyle(fontSize: 16),
+                          onPressed: _showPlaylistSelectDialog,
                         ),
-                        onPressed: _showPlaylistSelectDialog,
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey[800],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Refresh'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[800],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            textStyle: const TextStyle(fontSize: 16),
                           ),
-                          textStyle: const TextStyle(fontSize: 16),
+                          onPressed: _fetchAllAudios,
                         ),
-                        onPressed: _fetchAllAudios,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: _showFolders
-                      ? _selectedFolder == null
-                            ? ListView.builder(
-                                itemCount: _folderList.length,
-                                itemBuilder: (context, index) {
-                                  final folder = _folderList[index];
-                                  final count = _folderMap[folder]?.length ?? 0;
-                                  return ListTile(
-                                    leading: const Icon(
-                                      Icons.folder,
-                                      color: Colors.amber,
-                                    ),
-                                    title: Text(
-                                      folder.split(Platform.pathSeparator).last,
-                                      style: const TextStyle(
+                  Expanded(
+                    child: _showFolders
+                        ? _selectedFolder == null
+                              ? GridView.builder(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 8,
+                                  ),
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        childAspectRatio: 1.05,
+                                      ),
+                                  itemCount: _folderList.length,
+                                  itemBuilder: (context, index) {
+                                    final folder = _folderList[index];
+                                    final count =
+                                        _folderMap[folder]?.length ?? 0;
+                                    final overlayColor = index % 2 == 0
+                                        ? const Color(0xFF4A5C6A)
+                                        : const Color(0xFF9BA8AB);
+                                    return MediaFileCard(
+                                      icon: Icons.folder,
+                                      title: folder
+                                          .split(Platform.pathSeparator)
+                                          .last,
+                                      subtitle:
+                                          '$count audio file${count == 1 ? '' : 's'}',
+                                      isFavourite: false,
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedFolder = folder;
+                                        });
+                                      },
+                                      overlayColor: overlayColor,
+                                    );
+                                  },
+                                )
+                              : Column(
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(
+                                        Icons.arrow_back,
                                         color: Colors.white,
                                       ),
-                                    ),
-                                    subtitle: Text(
-                                      '$count audio file${count == 1 ? '' : 's'}',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
+                                      title: const Text(
+                                        'Back to Folders',
+                                        style: TextStyle(color: Colors.white),
                                       ),
-                                    ),
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedFolder = folder;
-                                      });
-                                    },
-                                  );
-                                },
-                              )
-                            : Column(
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(
-                                      Icons.arrow_back,
-                                      color: Colors.white,
-                                    ),
-                                    title: const Text(
-                                      'Back to Folders',
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedFolder = null;
-                                      });
-                                    },
-                                  ),
-                                  Expanded(
-                                    child: ListView.builder(
-                                      itemCount: folderAudios.length,
-                                      itemBuilder: (context, index) {
-                                        final asset = folderAudios[index];
-                                        return FutureBuilder<File?>(
-                                          future: asset.file,
-                                          builder: (context, snap) {
-                                            if (!snap.hasData) {
-                                              return const ListTile(
-                                                title: Text('Loading...'),
-                                              );
-                                            }
-                                            final file = snap.data!;
-                                            return ListTile(
-                                              leading: const Icon(
-                                                Icons.music_note,
-                                              ),
-                                              title: Text(
-                                                asset.title ??
-                                                    file.path.split('/').last,
-                                              ),
-                                              trailing:
-                                                  _favourites.contains(asset.id)
-                                                  ? const Icon(
-                                                      Icons.star,
-                                                      color: Colors.amber,
-                                                    )
-                                                  : null,
-                                              onTap: () {
-                                                final fullList = folderAudios;
-                                                final initialIndex = fullList
-                                                    .indexWhere(
-                                                      (a) => a.id == asset.id,
-                                                    );
-                                                if (initialIndex != -1) {
-                                                  Navigator.push(
-                                                    context,
-                                                    MaterialPageRoute(
-                                                      builder: (_) =>
-                                                          AudioPlayerScreen(
-                                                            audios: fullList,
-                                                            initialIndex:
-                                                                initialIndex,
-                                                          ),
-                                                    ),
-                                                  );
-                                                }
-                                              },
-                                            );
-                                          },
-                                        );
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedFolder = null;
+                                        });
                                       },
                                     ),
-                                  ),
-                                ],
-                              )
-                      : audiosToShow.isEmpty
-                      ? Center(
-                          child: Text(
-                            _isSearching ? 'No results.' : 'No audio found.',
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: audiosToShow.length,
-                          itemBuilder: (context, index) {
-                            final asset = audiosToShow[index];
-                            return FutureBuilder<File?>(
-                              future: asset.file,
-                              builder: (context, snap) {
-                                if (!snap.hasData) {
-                                  return const ListTile(
-                                    title: Text('Loading...'),
-                                  );
-                                }
-                                final file = snap.data!;
-                                return ListTile(
-                                  leading: const Icon(Icons.music_note),
-                                  title: Text(
-                                    asset.title ?? file.path.split('/').last,
-                                  ),
-                                  trailing: _favourites.contains(asset.id)
-                                      ? const Icon(
-                                          Icons.star,
-                                          color: Colors.amber,
-                                        )
-                                      : null,
-                                  onTap: () {
-                                    final fullList = audiosToShow;
-                                    final initialIndex = fullList.indexWhere(
-                                      (a) => a.id == asset.id,
-                                    );
-                                    if (initialIndex != -1) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => AudioPlayerScreen(
-                                            audios: fullList,
-                                            initialIndex: initialIndex,
-                                          ),
+                                    Expanded(
+                                      child: GridView.builder(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 8,
                                         ),
+                                        gridDelegate:
+                                            const SliverGridDelegateWithFixedCrossAxisCount(
+                                              crossAxisCount: 2,
+                                              childAspectRatio: 1.05,
+                                            ),
+                                        itemCount: folderAudios.length,
+                                        itemBuilder: (context, index) {
+                                          final asset = folderAudios[index];
+                                          final overlayColor = index % 2 == 0
+                                              ? const Color(0xFF4A5C6A)
+                                              : const Color(0xFF9BA8AB);
+                                          return FutureBuilder<File?>(
+                                            future: asset.file,
+                                            builder: (context, snap) {
+                                              if (!snap.hasData) {
+                                                return MediaFileCard(
+                                                  icon: Icons.music_note,
+                                                  title: 'Loading...',
+                                                  isFavourite: false,
+                                                  onTap: () {},
+                                                  overlayColor: overlayColor,
+                                                );
+                                              }
+                                              final file = snap.data!;
+                                              return MediaFileCard(
+                                                icon: Icons.music_note,
+                                                title:
+                                                    asset.title ??
+                                                    file.path.split('/').last,
+                                                isFavourite: _favourites
+                                                    .contains(asset.id),
+                                                onTap: () {
+                                                  final fullList = folderAudios;
+                                                  final initialIndex = fullList
+                                                      .indexWhere(
+                                                        (a) => a.id == asset.id,
+                                                      );
+                                                  if (initialIndex != -1) {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            AudioPlayerScreen(
+                                                              audios: fullList,
+                                                              initialIndex:
+                                                                  initialIndex,
+                                                            ),
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                                overlayColor: overlayColor,
+                                              );
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                )
+                        : audiosToShow.isEmpty
+                        ? Center(
+                            child: Text(
+                              _isSearching ? 'No results.' : 'No audio found.',
+                              style: const TextStyle(color: Color(0xFF9BA8AB)),
+                            ),
+                          )
+                        : GridView.builder(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 1.05,
+                                ),
+                            itemCount: audiosToShow.length,
+                            itemBuilder: (context, index) {
+                              final asset = audiosToShow[index];
+                              final overlayColor = index % 2 == 0
+                                  ? const Color(0xFF4A5C6A)
+                                  : const Color(0xFF9BA8AB);
+                              return FutureBuilder<File?>(
+                                future: asset.file,
+                                builder: (context, snap) {
+                                  if (!snap.hasData) {
+                                    return MediaFileCard(
+                                      icon: Icons.music_note,
+                                      title: 'Loading...',
+                                      isFavourite: false,
+                                      onTap: () {},
+                                      overlayColor: overlayColor,
+                                    );
+                                  }
+                                  final file = snap.data!;
+                                  return MediaFileCard(
+                                    icon: Icons.music_note,
+                                    title:
+                                        asset.title ??
+                                        file.path.split('/').last,
+                                    isFavourite: _favourites.contains(asset.id),
+                                    onTap: () {
+                                      final fullList = audiosToShow;
+                                      final initialIndex = fullList.indexWhere(
+                                        (a) => a.id == asset.id,
                                       );
-                                    }
-                                  },
-                                );
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
+                                      if (initialIndex != -1) {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => AudioPlayerScreen(
+                                              audios: fullList,
+                                              initialIndex: initialIndex,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    overlayColor: overlayColor,
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }
