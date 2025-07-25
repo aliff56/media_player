@@ -1,22 +1,30 @@
 package com.example.video_player
 
 import android.content.Intent
+import android.os.Build
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
-import android.os.Build
-import android.os.Bundle
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.media.MediaMetadataRetriever
+import android.util.Rational
+import android.widget.Toast
+import androidx.annotation.RequiresApi
+import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.content.Context.RECEIVER_NOT_EXPORTED
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.video_player/audio_controls"
     private val EVENT_CHANNEL = "com.example.video_player/audio_events"
     private val CHANNEL_NATIVE_ALBUM_ART = "native_album_art"
+    private lateinit var pipReceiver: BroadcastReceiver
 
     companion object {
         var eventSink: EventChannel.EventSink? = null
@@ -30,6 +38,25 @@ class MainActivity : FlutterActivity() {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
             }
         }
+        pipReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent != null && intent.hasExtra("action")) {
+                    val action = intent.getStringExtra("action")
+                    // pipActionChannel?.invokeMethod("onPiPAction", action) // Removed pipActionChannel
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction("com.example.PIP_PLAY_PAUSE")
+            addAction("com.example.PIP_NEXT")
+            addAction("com.example.PIP_PREV")
+        }
+        registerReceiver(pipReceiver, filter, RECEIVER_NOT_EXPORTED)
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(pipReceiver)
+        super.onDestroy()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -203,8 +230,16 @@ class MainActivity : FlutterActivity() {
                     startService(intent)
                     result.success(null)
                 }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Register native_album_art channel for album art fetching
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NATIVE_ALBUM_ART).setMethodCallHandler { call, result ->
+            when (call.method) {
                 "getAlbumArt" -> {
                     val filePath = call.argument<String>("filePath")
+                    android.util.Log.d("getAlbumArt", "Received filePath: $filePath")
                     if (filePath != null) {
                         val retriever = MediaMetadataRetriever()
                         try {
@@ -218,8 +253,10 @@ class MainActivity : FlutterActivity() {
                             art = retriever.embeddedPicture
                             retriever.release()
                             if (art != null) {
+                                android.util.Log.d("getAlbumArt", "Album art found, bytes: ${art.size}")
                                 result.success(art)
                             } else {
+                                android.util.Log.d("getAlbumArt", "No album art embedded in file: $filePath")
                                 result.success(null)
                             }
                         } catch (e: Exception) {
@@ -227,12 +264,14 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                     } else {
+                        android.util.Log.w("getAlbumArt", "filePath is null")
                         result.success(null)
                     }
                 }
                 else -> result.notImplemented()
             }
         }
+        // Removed: pipActionChannel and setMethodCallHandler for PiP
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -244,6 +283,8 @@ class MainActivity : FlutterActivity() {
             }
         )
     }
+
+    // Removed: enterPiPModeWithActions, onNewIntent, onUserLeaveHint, and onDestroy PiP logic
 
     // Helper to get the running AudioPlayerService instance
     private fun getAudioPlayerServiceInstance(): AudioPlayerService? {
